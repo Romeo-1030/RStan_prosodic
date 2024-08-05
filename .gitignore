@@ -1,0 +1,15 @@
+.DS_Store
+.bash_logout
+.bashrc
+.profile
+.wget-hsts
+.cache/
+.conda/
+.config/
+.ipynb_checkpoints/
+.jupyter/
+.local/
+.launchpadlib/
+.R/
+.git-credentials
+.gitconfig
