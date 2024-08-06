@@ -68,7 +68,7 @@ Gen_Pois_Quantities <- function(model, word, back = F){
   
   final = data.frame()
   # iterate through 4000 times
-  for (i in 1:4000) {
+  for (i in 1:200) {
     # generate length
     nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
                          prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))

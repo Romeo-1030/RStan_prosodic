@@ -34,6 +34,11 @@ load("/Users/lu//Desktop/Projects/sb corpus/sbc.Rdata")
 ```
 
 ```{r}
+load("sbc.Rdata")
+```
+
+
+```{r}
 sbc$place_minus_1 = sbc$place - 1
 sbc$length_minus_1 = sbc$unitWordLen - 1
 ```
@@ -770,7 +775,7 @@ check_back(an)
 ```
 
 ```{r}
-gen_pois_an = getModel("an", "Stan/gen_pois.stan", back = T)
+gen_pois_an = getModel("an", "stan_files/gen_pois.stan", back = T)
 ```
 
 ```{r}
@@ -784,7 +789,7 @@ result <- output$result
 ```
 
 ```{r}
-p1 <- plotting(all_df, result)
+p1 <- plotting(all_df, result, "an")
 print(p1)
 ```
 

@@ -11,13 +11,14 @@ library(boot)
 library(loo)
 
 source("Functions.R")
-
+options(buildtools.check = function(action) TRUE )
 ## Data
 
-load("/Users/lu//Desktop/Projects/sb corpus/sbc.Rdata")
+load("sbc.Rdata")
 sbc$place_minus_1 = sbc$place - 1
 sbc$length_minus_1 = sbc$unitWordLen - 1
 
+set.seed(1)
 ## For loop
 df <- data.frame(
   word = character(), model_type = character(), back = logical(), hurdle_place = character(), theta = numeric(), 
@@ -28,6 +29,14 @@ df <- data.frame(
   stringsAsFactors = FALSE
 )
 
+column_names <- c("word", "model_type", "back", "hurdle_place", "theta", "theta_sd", "lambda", "lambda_sd", "mu", 
+                  "mu_sd", "phi", "phi_sd", "psi_intercept", "psi_intercept_sd", "psi_slope", "psi_slope_sd", 
+                  "alpha", "alpha_sd", "waic", "waic_scaled")
+
+if (!dir.exists("Figures")) {
+  dir.create("Figures")
+}
+
 for (i in sbc_top200) {
   # i is a string
   word <- sbc %>%
@@ -37,7 +46,7 @@ for (i in sbc_top200) {
   cri <- check_back(word)
   
   # generalized poisson
-  gen_model <- getModel(i, "Stan/gen_pois.stan", back = cri)
+  gen_model <- getModel(i, "stan_files/gen_pois.stan", back = cri)
   word_final_gen <- Gen_Pois_Quantities(gen_model, word, back = cri)
   output_gen <- df_visual(word_final_gen, word)
   all_df_gen <- output_gen$all_df
@@ -56,7 +65,7 @@ for (i in sbc_top200) {
   hurdle_place <- hurdle(all_df_gen, result_gen)
   
   if (hurdle_place == '0' | hurdle_place == '-1') {
-    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle.stan", back = cri)
+    hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle.stan", back = cri)
     word_final_hur = Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 0)
     waic_hur <- get_waic(hurdle_model)
     waic_hur_sca <- waic_hur / nrow(word)
@@ -68,7 +77,7 @@ for (i in sbc_top200) {
     df <- rbind(df, save_hur)
   }
   else if (hurdle_place == '1' | hurdle_place == '-2') {
-    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle2.stan", back = cri)
+    hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle2.stan", back = cri)
     word_final_hur <- Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 1)
     waic_hur <- get_waic(hurdle_model)
     waic_hur_sca <- waic_hur / nrow(word)
@@ -85,6 +94,21 @@ for (i in sbc_top200) {
   all_df_hur <- output_hur$all_df
   result_hur <- output_hur$result
   plot_hur <- plotting(all_df_hur, result_hur, i)
-
+  
+  # Ensure subdirectory for the current word exists
+  word_folder <- file.path("Figures", i)
+  if (!dir.exists(word_folder)) {
+    dir.create(word_folder, recursive = TRUE)
+  }
+  
+  # Save the plots
+  ggsave(filename = file.path(word_folder, paste0(i, "_gen.png")), plot = plot_gen)
+  ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
+  
 }
+
+colnames(df) <- column_names
+
+write.csv(df, "results.csv", row.names = FALSE)
+
 
