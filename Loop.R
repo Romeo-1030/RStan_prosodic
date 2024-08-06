@@ -1,4 +1,3 @@
-
 # One two three go!
 
 ## Packages
@@ -69,6 +68,11 @@ for (i in sbc_top200[71:200]) {
     word_final_hur = Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 0)
     waic_hur <- get_waic(hurdle_model)
     waic_hur_sca <- waic_hur / nrow(word)
+    output_hur <- df_visual(word_final_hur, word)
+    all_df_hur <- output_hur$all_df
+    result_hur <- output_hur$result
+    plot_hur <- plotting(all_df_hur, result_hur, i)
+    
     sum_hur <- summary(hurdle_model)$summary
     save_hur <- c(i, 'hurdle', cri, hurdle_place, sum_hur['theta', "mean"], sum_hur['theta', "sd"], sum_hur['lambda', "mean"],
                   sum_hur['lambda', "sd"], sum_hur['mu', "mean"], sum_hur['mu', "sd"], sum_hur['phi', "mean"],
@@ -81,6 +85,11 @@ for (i in sbc_top200[71:200]) {
     word_final_hur <- Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 1)
     waic_hur <- get_waic(hurdle_model)
     waic_hur_sca <- waic_hur / nrow(word)
+    output_hur <- df_visual(word_final_hur, word)
+    all_df_hur <- output_hur$all_df
+    result_hur <- output_hur$result
+    plot_hur <- plotting(all_df_hur, result_hur, i)
+    
     sum_hur <- summary(hurdle_model)$summary
     save_hur <- c(i, 'hurdle', cri, hurdle_place, sum_hur['theta', "mean"], sum_hur['theta', "sd"], sum_hur['lambda', "mean"],
                   sum_hur['lambda', "sd"], sum_hur['mu', "mean"], sum_hur['mu', "sd"], sum_hur['phi', "mean"],
@@ -89,11 +98,8 @@ for (i in sbc_top200[71:200]) {
                   waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
   }
+  
 
-  output_hur <- df_visual(word_final_hur, word)
-  all_df_hur <- output_hur$all_df
-  result_hur <- output_hur$result
-  plot_hur <- plotting(all_df_hur, result_hur, i)
   
   # Ensure subdirectory for the current word exists
   word_folder <- file.path("Figures", i)
@@ -110,5 +116,3 @@ for (i in sbc_top200[71:200]) {
 colnames(df) <- column_names
 
 write.csv(df, "results.csv", row.names = FALSE)
-
-
