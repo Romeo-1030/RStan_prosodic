@@ -37,7 +37,7 @@ if (!dir.exists("Figures")) {
   dir.create("Figures")
 }
 
-for (i in sbc_top200) {
+for (i in sbc_top200[71:200]) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%
