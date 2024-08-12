@@ -28,15 +28,26 @@ df <- data.frame(
   stringsAsFactors = FALSE
 )
 
-column_names <- c("word", "model_type", "back", "hurdle_place", "theta", "theta_sd", "lambda", "lambda_sd", "mu", 
-                  "mu_sd", "phi", "phi_sd", "psi_intercept", "psi_intercept_sd", "psi_slope", "psi_slope_sd", 
-                  "alpha", "alpha_sd", "waic", "waic_scaled")
+column_names <- c(
+  "word", "model_type", "back", "hurdle_place", "theta_mean", "theta_se_mean", "theta_sd", "theta_2.5%", 
+  "theta_25%", "theta_50%", "theta_75%", "theta_97.5%", "theta_n_eff", "theta_Rhat", "lambda_mean", "lambda_se_mean", 
+  "lambda_sd", "lambda_2.5%", "lambda_25%", "lambda_50%", "lambda_75%", "lambda_97.5%", "lambda_n_eff", "lambda_Rhat",
+  "mu_mean", "mu_se_mean", "mu_sd", "mu_2.5%", "mu_25%", "mu_50%", "mu_75%", "mu_97.5%", "mu_n_eff", "mu_Rhat",
+  "phi_mean", "phi_se_mean", "phi_sd", "phi_2.5%", "phi_25%", "phi_50%", "phi_75%", "phi_97.5%", "phi_n_eff", "phi_Rhat",
+  "psi_intercept_mean", "psi_intercept_se_mean", "psi_intercept_sd", "psi_intercept_2.5%", "psi_intercept_25%", "psi_intercept_50%",
+  "psi_intercept_75%", "psi_intercept_97.5%", "psi_intercept_n_eff", "psi_intercept_Rhat", "psi_slope_mean", "psi_slope_se_mean",
+  "psi_slope_sd", "psi_slope_2.5%", "psi_slope_25%", "psi_slope_50%", "psi_slope_75%", "psi_slope_97.5%", "psi_slope_n_eff",
+  "psi_slope_Rhat", "alpha_mean", "alpha_se_mean", "alpha_sd", "alpha_2.5%", "alpha_25%", "alpha_50%", "alpha_75%", "alpha_97.5%",
+  "alpha_n_eff", "alpha_Rhat", "waic", "waic_scaled"
+)
 
 if (!dir.exists("Figures")) {
   dir.create("Figures")
 }
 
-for (i in sbc_top200[20:200]) {
+error_words <- c()
+
+for (i in sbc_top200[82:83]) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%
@@ -45,13 +56,13 @@ for (i in sbc_top200[20:200]) {
   cri <- check_back(word)
   
   # generalized poisson
-  gen_model <- getModel('back', "Stan/gen_pois.stan", back = cri)
+  gen_model <- getModel(i, "Stan/gen_pois.stan", back = cri)
   
   word_final_gen <- tryCatch({
     Gen_Pois_Quantities(gen_model, word, back = cri)
   }, error = function(e) {
     message(paste("Error processing word in Gen_Pois_Quantities:", i))
-    error_words <- c(error_words, i)  # Save the word that caused the error
+    error_words <<- c(error_words, i)  # Save the word that caused the error
     return(NULL)  # Return NULL to handle this case
   })
   
@@ -74,9 +85,11 @@ for (i in sbc_top200[20:200]) {
   ggsave(filename = file.path(word_folder, paste0(i, "_gen.png")), plot = plot_gen)
   
   sum_gen <- summary(gen_model)$summary
-  save_gen <- c(i, 'gen', cri, NA, sum_gen['theta', "mean"], sum_gen['theta', "sd"], sum_gen['lambda', "mean"],
-                sum_gen['lambda', "sd"], sum_gen['mu', "mean"], sum_gen['mu', "sd"], sum_gen['phi', "mean"],
-                sum_gen['phi', "sd"], NA, NA, NA, NA, NA, NA, waic_gen, waic_gen_sca)
+  selected_rows <- summary_gen[1:4, ]
+  flattened_row <- as.vector(t(selected_rows))
+  
+  
+  save_gen <- c(i, 'gen', cri, NA, flattened_row, rep(NA, 30), waic_gen, waic_gen_sca)
   df <- rbind(df, save_gen)
   
   # check hurdle location
@@ -89,7 +102,7 @@ for (i in sbc_top200[20:200]) {
       Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 0)
     }, error = function(e) {
       message(paste("Error processing word in Hurdle_Pois_Quantities:", i))
-      error_words <- c(error_words, i)  # Save the word that caused the error
+      error_words <<- c(error_words, i)  # Save the word that caused the error
       return(NULL)  # Return NULL to handle this case
     })
     
@@ -113,15 +126,26 @@ for (i in sbc_top200[20:200]) {
     ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
     
     sum_hur <- summary(hurdle_model)$summary
-    save_hur <- c(i, 'hurdle', cri, hurdle_place, sum_hur['theta', "mean"], sum_hur['theta', "sd"], sum_hur['lambda', "mean"],
-                  sum_hur['lambda', "sd"], sum_hur['mu', "mean"], sum_hur['mu', "sd"], sum_hur['phi', "mean"],
-                  sum_hur['phi', "sd"], sum_hur['psi_intercept', "mean"], sum_hur['psi_intercept', "sd"], 
-                  sum_hur['psi_slope', "mean"], sum_hur['psi_slope', "sd"], NA, NA, waic_hur, waic_hur_sca)
+    selected_rows_her <- sum_hur[1:6, ]
+    flattened_row_her <- as.vector(t(selected_rows_her))
+    
+    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_her, rep(NA, 10), waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
-  }
-  else if (hurdle_place == '1' | hurdle_place == '-2') {
-    hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle2.stan", back = cri)
-    word_final_hur <- Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 1)
+    
+  } else if (hurdle_place == '1' | hurdle_place == '-2') {
+    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle2.stan", back = cri)
+    
+    word_final_hur <- tryCatch({
+      Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 1)
+    }, error = function(e) {
+      message(paste("Error processing word in Hurdle_Pois_Quantities:", i))
+      error_words <<- c(error_words, i)  # Save the word that caused the error
+      return(NULL)  # Return NULL to handle this case
+    })
+    
+    # If word_final_hur is NULL, skip to the next word
+    if (is.null(word_final_hur)) next
+    
     waic_hur <- get_waic(hurdle_model)
     waic_hur_sca <- waic_hur / nrow(word)
     output_hur <- df_visual(word_final_hur, word)
@@ -139,15 +163,12 @@ for (i in sbc_top200[20:200]) {
     ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
     
     sum_hur <- summary(hurdle_model)$summary
-    save_hur <- c(i, 'hurdle', cri, hurdle_place, sum_hur['theta', "mean"], sum_hur['theta', "sd"], sum_hur['lambda', "mean"],
-                  sum_hur['lambda', "sd"], sum_hur['mu', "mean"], sum_hur['mu', "sd"], sum_hur['phi', "mean"],
-                  sum_hur['phi', "sd"], sum_hur['psi_intercept', "mean"], sum_hur['psi_intercept', "sd"], 
-                  sum_hur['psi_slope', "mean"], sum_hur['psi_slope', "sd"], sum_hur['alpha', "mean"], sum_hur['alpha', "sd"],
-                  waic_hur, waic_hur_sca)
+    selected_rows_her <- sum_hur[1:7, ]
+    flattened_row_her <- as.vector(t(selected_rows_her))
+
+    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_her, waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
   }
-  #a = summary(xxx)paste(rep(rownames(a), ncol(a)), colnames(a), sep = "_")
-
   
 }
 
