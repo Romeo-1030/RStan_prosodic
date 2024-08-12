@@ -68,7 +68,7 @@ Gen_Pois_Quantities <- function(model, word, back = F){
   
   final = data.frame()
   # iterate through 4000 times
-  for (i in 1:200) {
+  for (i in 3801:4000) {
     # generate length
     nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
                          prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
@@ -137,7 +137,7 @@ Mix_Pois_Quantities <- function(model, word) {
   ## generate a v for each length, then divide them into corresponding group then go to cdf,  
   final = data.frame()
   # iterate through 4000 times
-  for (j in 1:200) {
+  for (j in 3801:4000) {
     li <- c()
     gi <- c()
     nb_length1 <- c() #
@@ -256,7 +256,7 @@ Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
   
   final = data.frame()
   
-  for (i in 1:200) {
+  for (i in 3801:4000) {
     nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
                          prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
     nb_place <- c()
@@ -324,7 +324,6 @@ df_visual <- function(quantities, word) {
 
 ### plotting 
 plotting <- function(all_df, result, word) {
-  
   labels_map <- result %>% 
     group_by(nb_length) %>% 
     summarise(n.y = unique(n.y)) %>%

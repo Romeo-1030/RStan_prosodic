@@ -36,7 +36,7 @@ if (!dir.exists("Figures")) {
   dir.create("Figures")
 }
 
-for (i in sbc_top200[71:200]) {
+for (i in sbc_top200[20:200]) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%
@@ -45,14 +45,33 @@ for (i in sbc_top200[71:200]) {
   cri <- check_back(word)
   
   # generalized poisson
-  gen_model <- getModel(i, "stan_files/gen_pois.stan", back = cri)
-  word_final_gen <- Gen_Pois_Quantities(gen_model, word, back = cri)
+  gen_model <- getModel('back', "Stan/gen_pois.stan", back = cri)
+  
+  word_final_gen <- tryCatch({
+    Gen_Pois_Quantities(gen_model, word, back = cri)
+  }, error = function(e) {
+    message(paste("Error processing word in Gen_Pois_Quantities:", i))
+    error_words <- c(error_words, i)  # Save the word that caused the error
+    return(NULL)  # Return NULL to handle this case
+  })
+  
+  # If word_final_gen is NULL, skip to the next word
+  if (is.null(word_final_gen)) next
+  
   output_gen <- df_visual(word_final_gen, word)
   all_df_gen <- output_gen$all_df
   result_gen <- output_gen$result
   waic_gen <- get_waic(gen_model)
   waic_gen_sca <- waic_gen / nrow(word)
   plot_gen <- plotting(all_df_gen, result_gen, i)
+  
+  word_folder <- file.path("Figures", i)
+  if (!dir.exists(word_folder)) {
+    dir.create(word_folder, recursive = TRUE)
+  }
+  
+  # Save the plots
+  ggsave(filename = file.path(word_folder, paste0(i, "_gen.png")), plot = plot_gen)
   
   sum_gen <- summary(gen_model)$summary
   save_gen <- c(i, 'gen', cri, NA, sum_gen['theta', "mean"], sum_gen['theta', "sd"], sum_gen['lambda', "mean"],
@@ -65,13 +84,33 @@ for (i in sbc_top200[71:200]) {
   
   if (hurdle_place == '0' | hurdle_place == '-1') {
     hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle.stan", back = cri)
-    word_final_hur = Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 0)
+    
+    word_final_hur <- tryCatch({
+      Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 0)
+    }, error = function(e) {
+      message(paste("Error processing word in Hurdle_Pois_Quantities:", i))
+      error_words <- c(error_words, i)  # Save the word that caused the error
+      return(NULL)  # Return NULL to handle this case
+    })
+    
+    # If word_final_hur is NULL, skip to the next word
+    if (is.null(word_final_hur)) next
+    
+    
     waic_hur <- get_waic(hurdle_model)
     waic_hur_sca <- waic_hur / nrow(word)
     output_hur <- df_visual(word_final_hur, word)
     all_df_hur <- output_hur$all_df
     result_hur <- output_hur$result
     plot_hur <- plotting(all_df_hur, result_hur, i)
+    # Ensure subdirectory for the current word exists
+    word_folder <- file.path("Figures", i)
+    if (!dir.exists(word_folder)) {
+      dir.create(word_folder, recursive = TRUE)
+    }
+    
+    # Save the plots
+    ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
     
     sum_hur <- summary(hurdle_model)$summary
     save_hur <- c(i, 'hurdle', cri, hurdle_place, sum_hur['theta', "mean"], sum_hur['theta', "sd"], sum_hur['lambda', "mean"],
@@ -90,6 +129,15 @@ for (i in sbc_top200[71:200]) {
     result_hur <- output_hur$result
     plot_hur <- plotting(all_df_hur, result_hur, i)
     
+    # Ensure subdirectory for the current word exists
+    word_folder <- file.path("Figures", i)
+    if (!dir.exists(word_folder)) {
+      dir.create(word_folder, recursive = TRUE)
+    }
+    
+    # Save the plots
+    ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
+    
     sum_hur <- summary(hurdle_model)$summary
     save_hur <- c(i, 'hurdle', cri, hurdle_place, sum_hur['theta', "mean"], sum_hur['theta', "sd"], sum_hur['lambda', "mean"],
                   sum_hur['lambda', "sd"], sum_hur['mu', "mean"], sum_hur['mu', "sd"], sum_hur['phi', "mean"],
@@ -98,21 +146,13 @@ for (i in sbc_top200[71:200]) {
                   waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
   }
-  
+  #a = summary(xxx)paste(rep(rownames(a), ncol(a)), colnames(a), sep = "_")
 
-  
-  # Ensure subdirectory for the current word exists
-  word_folder <- file.path("Figures", i)
-  if (!dir.exists(word_folder)) {
-    dir.create(word_folder, recursive = TRUE)
-  }
-  
-  # Save the plots
-  ggsave(filename = file.path(word_folder, paste0(i, "_gen.png")), plot = plot_gen)
-  ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
   
 }
 
 colnames(df) <- column_names
 
 write.csv(df, "results.csv", row.names = FALSE)
+
+
