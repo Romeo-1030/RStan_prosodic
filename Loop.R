@@ -47,7 +47,7 @@ if (!dir.exists("Figures")) {
 
 error_words <- c()
 
-for (i in sbc_top200[82:83]) {
+for (i in sbc_top200) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%
@@ -85,7 +85,7 @@ for (i in sbc_top200[82:83]) {
   ggsave(filename = file.path(word_folder, paste0(i, "_gen.png")), plot = plot_gen)
   
   sum_gen <- summary(gen_model)$summary
-  selected_rows <- summary_gen[1:4, ]
+  selected_rows <- sum_gen[1:4, ]
   flattened_row <- as.vector(t(selected_rows))
   
   
@@ -174,6 +174,6 @@ for (i in sbc_top200[82:83]) {
 
 colnames(df) <- column_names
 
-write.csv(df, "results.csv", row.names = FALSE)
+write.csv(df, "results2.csv", row.names = FALSE)
 
 
