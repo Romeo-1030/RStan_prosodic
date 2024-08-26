@@ -128,58 +128,41 @@ Mix_Pois_Quantities <- function(model, word) {
   nb_theta2 <- rstan::extract(model, pars = c("theta2"))
   nb_lambda2 <- rstan::extract(model, pars = c("lambda2"))
   
-  nb_phi1 <- rstan::extract(model, pars = c("phi1"))
-  nb_mu1 <- rstan::extract(model, pars = c("mu1"))
-  nb_phi2 <- rstan::extract(model, pars = c("phi1"))
-  nb_mu2 <- rstan::extract(model, pars = c("mu1"))
+  nb_phi <- rstan::extract(model, pars = c("phi"))
+  nb_mu <- rstan::extract(model, pars = c("mu"))
   nb_psi <- rstan::extract(model, pars = c("psi"))
   
   ## generate a v for each length, then divide them into corresponding group then go to cdf,  
   final = data.frame()
   # iterate through 4000 times
-  for (j in 3801:4000) {
-    li <- c()
-    gi <- c()
-    nb_length1 <- c() #
+  for (i in 3801:4000) {
+      
+    nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
+                        prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
+    max_length <- max(nb_length)
+    
+    nb_place1 <- c()
+    nb_place2 <- c()
+    nb_length1 <- c()
     nb_length2 <- c()
-    for (i in 1:length(nb_psi$psi)) {  # word$length_minus_1 length above 1000 
-      v <- runif(1, 0, 1)               # plots works fine! but it's wrong. 
-      # generate a value
-      psi <- nb_psi$psi[i]
+    psi <- nb_psi$psi[i]
+    for (k in 1:length(nb_length)){
+      v <- runif(1, 0, 1)
       if (v < psi) {
-        len1 <- rnbinom(1, size = nb_phi1$phi1[i], 
-                        prob = nb_phi1$phi1[i] / (nb_phi1$phi1[i] + nb_mu1$mu1[i])) #?
-        nb_length1 <- c(nb_length1, len1)
-        max_length1 <- max(nb_length1)
-        li <- c(li, i)
-        
+        nb_place1 <- c(nb_place1, trun_mix(nb_theta1$theta1[i], nb_lambda1$lambda1[i],
+                                           nb_length[k], max_length))
+        nb_length1 <- c(nb_length1, nb_length[k])
+  
       } else {
-        len2 <- rnbinom(1, size = nb_phi2$phi1[i], 
-                        prob = nb_phi2$phi1[i] / (nb_phi2$phi1[i] + nb_mu2$mu1[i]))
-        nb_length2 <- c(nb_length2, len2)
-        max_length2 <- max(nb_length2)
-        gi <- c(gi, i)
+        nb_place2 <- c(nb_place2, trun_mix(nb_theta2$theta2[i], nb_lambda2$lambda2[i],
+                                           nb_length[k], max_length))
+        nb_length2 <- c(nb_length2, nb_length[k])
       }
     }
     
-    nb_place1 <- c()
-    for (k in 1:length(nb_length1)){
-      nb_place1 <- c(nb_place1, trun_mix(nb_theta1$theta1[li[k]], nb_lambda1$lambda1[li[k]],
-                                         nb_length1[k], max_length1))
-    }
-    
-    nb_place2 <- c()
-    for (k in 1:length(nb_length2)){
-      nb_place2 <- c(nb_place2, trun_mix(nb_theta2$theta2[gi[k]], nb_lambda2$lambda2[gi[k]],
-                                         nb_length2[k], max_length2))
-    }
-    
     nb_place2 <- nb_length2 - nb_place2
-    
     nb_length <- c(nb_length1, nb_length2)
     nb_place <- c(nb_place1, nb_place2)
-    
-    
     generated <- data.frame(nb_length, nb_place)
     final <- rbind(final, generated)
   }
