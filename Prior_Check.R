@@ -47,6 +47,49 @@ hist(gen_pois_data, main = "Prior Predictive Check: Generalized Poisson", xlab =
 ############ Mixture Model
 
 
+# Number of prior predictive samples
+n_prior_samples <- 1000
+
+# Simulate theta1, theta2, mu1, phi1, psi from Gamma distributions as before
+theta1_samples <- rgamma(n_prior_samples, shape = 16, rate = 4)
+theta2_samples <- rgamma(n_prior_samples, shape = 16, rate = 4)
+mu1_samples <- rgamma(n_prior_samples, shape = 8, rate = 8)
+phi1_samples <- rgamma(n_prior_samples, shape = 8, rate = 8)
+psi_samples <- runif(n_prior_samples, 0, 1)
+
+# Simulate lambda1, lambda2 within [0, 1] using Beta distribution
+lambda1_samples <- rbeta(n_prior_samples, shape1 = 8, shape2 = 8)
+lambda2_samples <- rbeta(n_prior_samples, shape1 = 8, shape2 = 8)
+
+# Define the number of observations
+N <- 100
+
+# Placeholder for simulated data
+simulated_place <- matrix(NA, n_prior_samples, N)
+simulated_back_place <- matrix(NA, n_prior_samples, N)
+simulated_unit_length <- matrix(NA, n_prior_samples, N)
+
+# Loop over prior samples to generate simulated data
+for (i in 1:n_prior_samples) {
+  for (n in 1:N) {
+    # Simulate unit length
+    simulated_unit_length[i, n] <- rnbinom(1, size = phi1_samples[i], 
+                                           prob = phi1_samples[i]/(phi1_samples[i] + mu1_samples[i]))
+    
+    # Simulate place and back_place based on mixture
+    if (runif(1) < psi_samples[i]) {
+      simulated_place[i, n] <- rgenpois(1, theta1_samples[i], lambda1_samples[i])
+    } else {
+      simulated_back_place[i, n] <- rgenpois(1, theta2_samples[i], lambda2_samples[i])
+    }
+  }
+}
+
+# Plot histograms of the simulated data
+hist(simulated_unit_length, breaks = 30, main = "Prior Predictive Check - Unit Length", xlab = "Unit Length")
+hist(simulated_place, breaks = 30, main = "Prior Predictive Check - Place", xlab = "Place")
+hist(simulated_back_place, breaks = 30, main = "Prior Predictive Check - Back Place", xlab = "Back Place")
+
 
 
 
