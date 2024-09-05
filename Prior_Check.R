@@ -54,8 +54,13 @@ Gen_Pois_Prior <- function(back = F, n){
   # iterate through 4000 times
   for (i in 1:n) {
     # generate length
-    nb_length <- rnbinom(1000, size = phi_samples[i], prob = phi_samples[i] / (phi_samples[i] + mu_samples[i]))
-    
+    nb_length <- numeric(0)
+    while (length(nb_length) < 1000) {
+      new_values <- rnbinom(1000, size = phi_samples[i], prob = phi_samples[i] / 
+                              (phi_samples[i] + mu_samples[i]))
+      nb_length <- c(nb_length, new_values[new_values < 30])  # Append only values less than 26
+    }
+    nb_length <- nb_length[1:1000]
     nb_place <- c()
     max_length <- max(nb_length)
     
@@ -204,3 +209,7 @@ plotting_prior <- function(all_df) {
 
 n <- 2000
 prior_data <- Gen_Pois_Prior(back = F, n)
+df <- df_visual_prior(prior_data, n)
+p <- plotting_prior(df)
+print(p)
+

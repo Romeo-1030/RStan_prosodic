@@ -32,7 +32,7 @@ getModel <- function(word, file_path, back = F){
 
 
 ### CDF for Generalized Poisson
-trun_rgen <- function(theta, lambda, unit_length, word, max_length) {
+trun_rgen <- function(theta, lambda, unit_length, max_length) {
   prob_list <- c()
   y_list <- c()
   for (y in 0:max_length) {
@@ -78,7 +78,7 @@ Gen_Pois_Quantities <- function(model, word, back = F){
     
     # for each length generate place 
     for (length_val in nb_length) {
-      nb_place <- c(nb_place, trun_rgen(nb_theta$theta[i], nb_lambda$lambda[i], length_val, word, max_length))
+      nb_place <- c(nb_place, trun_rgen(nb_theta$theta[i], nb_lambda$lambda[i], length_val, max_length))
       
     }
     
@@ -171,7 +171,7 @@ Mix_Pois_Quantities <- function(model, word) {
 
 
 ### CDF for hurdle model
-trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, word, max_length, hurdle) {
+trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, max_length, hurdle) {
   prob_list <- c()
   y_list <- c()
   psi <- inv.logit(unit_length*psi_slope + psi_intercept)
@@ -255,7 +255,7 @@ Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
       nb_place <- c(nb_place, trun_hurdle(nb_theta$theta[i], nb_lambda$lambda[i], 
                                           nb_psi_inter$psi_intercept[i],
                                           nb_psi_slope$psi_slope[i],
-                                          alpha, length_val, word, max_length, hurdle))
+                                          alpha, length_val, max_length, hurdle))
     }
     if (back == T) {
       nb_place <- nb_length - nb_place
@@ -372,7 +372,7 @@ check_back <- function(word) {
 ## Check which place to hurdle
 complete_rows <- function(df_joined){
   row_to_copy1 <- df_joined[df_joined$nb_length == 1 & df_joined$nb_place == 0, ]
-  row_to_copy2 <- df_joined[df_joined$nb_length == 1 & df_joined$nb_place == 1, ]
+  row_to_copy2 <- df_joined[df_joinsed$nb_length == 1 & df_joined$nb_place == 1, ]
   row_to_copy3 <- df_joined[df_joined$nb_length == 2 & df_joined$nb_place == 1, ]
   
   # Check if a row with label -2 already exists
@@ -456,30 +456,4 @@ hurdle <- function(all_df, result) {
   
   return(max_count)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
