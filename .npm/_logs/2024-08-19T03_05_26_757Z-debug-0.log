@@ -1,0 +1,19 @@
+0 verbose cli /opt/conda/bin/node /opt/conda/bin/npm
+1 info using npm@10.8.2
+2 info using node@v22.6.0
+3 silly config load:file:/opt/conda/lib/node_modules/npm/npmrc
+4 silly config load:file:/tmp/.npmrc
+5 silly config load:file:/home/jovyan/.npmrc
+6 silly config load:file:/opt/conda/etc/npmrc
+7 verbose title npm cache clean
+8 verbose argv "cache" "clean" "--force"
+9 verbose logfile logs-max:10 dir:/home/jovyan/.npm/_logs/2024-08-19T03_05_26_757Z-
+10 verbose logfile /home/jovyan/.npm/_logs/2024-08-19T03_05_26_757Z-debug-0.log
+11 warn using --force Recommended protections disabled.
+12 silly logfile done cleaning log files
+13 verbose cwd /tmp
+14 verbose os Linux 6.5.0-1025-azure
+15 verbose node v22.6.0
+16 verbose npm  v10.8.2
+17 verbose exit 0
+18 info ok
