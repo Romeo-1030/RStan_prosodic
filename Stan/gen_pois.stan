@@ -25,8 +25,8 @@ transformed parameters {
   real lprior = 0;
   lprior += gamma_lpdf(theta | 2, 0.5); 
   lprior += gamma_lpdf(lambda | 1, 1);
-  lprior += gamma_lpdf(mu | 1, 1);
-  lprior += gamma_lpdf(phi | 1, 1);
+  lprior += gamma_lpdf(mu | 8, 1);
+  lprior += gamma_lpdf(phi | 2, 0.25);
 }
 model {
   target += lprior;
