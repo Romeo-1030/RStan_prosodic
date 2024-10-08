@@ -47,8 +47,8 @@ Gen_Pois_Prior <- function(back = F, n){
   
   # generate the other parameters using the prior distribution
   theta_samples <- rgamma(n, shape = 2, rate = 0.5)
-  mu_samples <- rgamma(n, shape = 1, rate = 1)
-  phi_samples <- rgamma(n, shape = 1, rate = 1)
+  mu_samples <- rgamma(n, shape = 8, rate = 1)
+  phi_samples <- rgamma(n, shape = 2, rate = 0.25)
   
   prior_data <- data.frame()
   # iterate through 4000 times
@@ -174,10 +174,11 @@ df_visual_prior <- function(quantities, n) {
     subset_data <- quantities[start_index:end_index, ] %>% group_by(nb_length, nb_place) %>% count
     
     # Filter for nb_length < 15 and aggregate the counts
-    subset <- subset_data[subset_data$nb_length < 15,]
+    subset <- subset_data[subset_data$nb_length < 100,]
     result <- aggregate(n ~ nb_length, data = subset, FUN = sum)
     
     merged_df <- merge(subset, result, by = "nb_length")
+    merged_df$iteration <- i
     
     all_df <- rbind(all_df, merged_df)
   }
@@ -185,18 +186,31 @@ df_visual_prior <- function(quantities, n) {
 }
 
 
+random_select_groups <- function(all_df, num_groups = 1) {
+  unique_groups <- unique(all_df$iteration)
+  
+  selected_groups <- sample(unique_groups, num_groups)
+  
+  # Subset the dataframe based on the selected groups
+  selected_df <- all_df[all_df$iteration %in% selected_groups, ]
+  
+  return(selected_df)
+}
+
+
 ### plotting 
-plotting_prior <- function(all_df) {
-  labels_map <- result %>% 
+plotting_prior <- function(selected_df) {
+  labels_map <- selected_df %>% 
     group_by(nb_length) %>% 
-    summarise(n.y = unique(n.y)) %>%
+    reframe(n.y = unique(n.y)) %>%
     deframe()  
+  
   custom_labeller <- function(nb_length) {
     sapply(nb_length, function(x) paste(x, "size:", labels_map[x]))
   }
   
-  p <- ggplot(data = all_df, aes(x = nb_place, y = n.x/n.y)) +
-    geom_point(alpha = .015, position = "jitter")
+  p <- ggplot(data = selected_df, aes(x = nb_place, y = n.x/n.y)) +
+    geom_point(alpha = 1)
   
   p <- p + facet_wrap("nb_length", labeller = as_labeller(custom_labeller)) + 
     theme(plot.title = element_text(hjust = 0.5)) + 
@@ -206,10 +220,76 @@ plotting_prior <- function(all_df) {
   return(p)
 }
 
+calculate_prior_statistics <- function(selected_df) {
+  prior_statistics <- selected_df %>%
+    group_by(nb_length) %>%
+    summarise(
+      mean_place = mean(nb_place),
+      median_place = median(nb_place),
+      sd_place = sd(nb_place),
+      range_place = max(nb_place) - min(nb_place),
+      percentile_25 = quantile(nb_place, 0.25),
+      percentile_75 = quantile(nb_place, 0.75)
+    )
+  return(prior_statistics)
+}
 
-n <- 2000
-prior_data <- Gen_Pois_Prior(back = F, n)
-df <- df_visual_prior(prior_data, n)
-p <- plotting_prior(df)
+size <- 2000
+quantities <- Gen_Pois_Prior(F, size)
+all_df <- df_visual_prior(quantities, n = 2000)  # Generate data for all iterations (100 groups of 1000 rows)
+
+## randomly select 30 groups of data and put them into a list of plots
+
+plot_list <- list()
+prior_statistics_list <- list()
+for (i in 1:30) {
+  selected_df <- random_select_groups(all_df, num_groups = 1) 
+  p <- plotting_prior(selected_df)
+  plot_list[[i]] <- p
+  prior_statistics <- calculate_prior_statistics(selected_df)
+  prior_statistics_list[[i]] <- prior_statistics
+}
+
+final_prior_statistics <- bind_rows(prior_statistics_list)
+
+
+#two graphs of kde to represnet the distribution of length
+#one graph for the word, and one for the draws
+
+# find what is common in the real one but not the fake one
+
+all_df %>% filter(iteration <= 5)
+
+p <- ggplot(all_df %>% filter(iteration <= 10), aes(x = nb_length, col = as.factor(iteration))) + geom_density()
 print(p)
 
+
+sbc %>% filter(sbc$text_lower %in% sbc_top200)
+
+p_real <- ggplot(sbc %>% filter(sbc$text_lower %in% sbc_top200), aes(x = length_minus_1, col = as.factor(text_lower))) + geom_density() + theme(legend.position = "none") + scale_x_continuous(limits = c(0,10)) + scale_y_continuous(limits = c(0,10))
+print(p_real)
+
+sbc$length_minus_1
+
+######
+
+
+summary_df <- all_df %>%
+  group_by(iteration) %>%
+  summarize(
+    max_nb_length = max(nb_length),
+  )
+
+sum(summary_df$max_nb_length > 25)/nrow(summary_df)
+# View the summarized results
+print(summary_df)
+
+
+summary_df_real <- sbc %>% filter(sbc$text_lower %in% sbc_top200) %>%
+  group_by(text_lower) %>%
+  summarize(
+    max_var = var(length_minus_1),
+  )
+sum(summary_df_real$max_length > 20)/nrow(summary_df_real)
+
+summary(summary_df_real$max_var)
