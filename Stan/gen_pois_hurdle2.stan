@@ -1,17 +1,32 @@
 
 functions {
   real genpoiss_truncated_lpmf(int y, real theta, real lambda, int truncation) {
-    
+
+    // Check if y is greater than truncation (impossible case)
     if (y > truncation) {
-      return -1000; // Probability is zero outside the truncation
+      return negative_infinity();  // Return -inf for impossible values
     }
-    if ((theta * pow(theta + lambda * y, y-1) * exp(-theta - lambda * y)) / tgamma(y + 1) == 0) {
-      return -1000;
+
+    // Compute the unnormalized probability for the given y
+    real prob = theta * pow(theta + lambda * y, y - 1) * exp(-theta - lambda * y) / tgamma(y + 1);
+
+    // Check if the probability is zero to avoid log(0)
+    if (prob == 0) {
+      return -1000;  // Return a very low log-probability for zero probability
+    } else {
+      real log_prob = log(prob);
+
+      // Compute the normalization constant Z by summing over all valid y values (from 0 to truncation)
+      real Z = 0;
+      for (i in 0:truncation) {
+        Z += theta * pow(theta + lambda * i, i - 1) * exp(-theta - lambda * i) / tgamma(i + 1);
+      }
+
+      // Return the normalized log-probability
+      return log_prob - log(Z);  // Normalize by subtracting log(Z)
     }
-    return log((theta * pow(theta + lambda * y, y-1) * exp(-theta - lambda * y)) / tgamma(y + 1));
   }
 }
-
 data {
   int<lower=1> N;  // total number of observations
   int place[N];  

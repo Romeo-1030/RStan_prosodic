@@ -24,6 +24,7 @@ library(rstan)
 library(tidyr)
 library(HMMpa)
 library(boot)
+source("Functions.R")
 ```
 
 # Loading Data
@@ -775,8 +776,29 @@ check_back(an)
 ```
 
 ```{r}
-gen_pois_an = getModel("an", "stan_files/gen_pois.stan", back = T)
+gen_pois_an = getModel("an", "Stan/gen_pois.stan", back = T)
 ```
+
+
+```{r}
+source("Functions.R")
+# Parameters
+theta <- 2
+lambda <- 0.5
+unit_length <- 5
+max_length <- 100
+
+# Run the old version
+old_result <- trun_rgen(theta, lambda, unit_length, max_length)
+print("Old Function Probability Sum:")
+print(sum(old_result$prob_list))  # Check if it sums to 1
+
+
+
+```
+
+
+
 
 ```{r}
 an_final = Gen_Pois_Quantities(gen_pois_an, an, back = T)

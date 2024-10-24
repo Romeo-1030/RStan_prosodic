@@ -1,7 +1,6 @@
-
 functions {
   real genpoiss_truncated_lpmf(int y, real theta, real lambda, int truncation) {
-
+    
     // Check if y is greater than truncation (impossible case)
     if (y > truncation) {
       return negative_infinity();  // Return -inf for impossible values
@@ -34,7 +33,6 @@ data {
   int unit_length[N];
 }
 
-// summation of psi 1 and psi 2 <= 1
 parameters {
   real<lower = 0> theta;
   real<lower = 0, upper = 1> lambda;
@@ -46,8 +44,8 @@ parameters {
 
 transformed parameters {
   real lprior = 0;
-  lprior += gamma_lpdf(theta | 2, 0.5); // Specify your prior distribution for theta
-  lprior += gamma_lpdf(lambda | 1, 1);//  Specify your prior distribution for lambda
+  lprior += gamma_lpdf(theta | 2, 0.5); // Prior for theta
+  lprior += gamma_lpdf(lambda | 1, 1);  // Prior for lambda
   lprior += gamma_lpdf(mu | 1, 1);
   lprior += gamma_lpdf(phi | 1, 1);
 }
@@ -56,35 +54,32 @@ model {
   target += lprior;
   for (i in 1:N) {
     real psi = inv_logit(psi_intercept + psi_slope * unit_length[i]); // Calculate psi for each observation
-    
-    if (place[i] == 0) {
-      target += log(psi);
+
+    // Hurdle at the last element: place[i] == unit_length[i]
+    if (place[i] == unit_length[i]) {
+      target += log(psi);  // Probability of place = unit_length[i]
     } 
     else {
-      target += log(1 - psi) 
-                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i]) 
-                - log(1 - ((theta * pow(theta, -1) * exp(-theta)) / tgamma(1)));
+      target += log(1 - psi);  // Probability of place < unit_length[i]
+      target += genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i] - 1);  // Truncated Generalized Poisson for non-last element
     }
-    target += neg_binomial_2_lpmf(unit_length[i] | mu, phi);
+    target += neg_binomial_2_lpmf(unit_length[i] | mu, phi);  // Negative binomial for unit_length
   }
 }
-
 
 generated quantities {
   real log_lik[N];
 
-  for (i in 1:N){
+  for (i in 1:N) {
     real psi = inv_logit(psi_intercept + psi_slope * unit_length[i]);
-    if (place[i] == 0) {
-      log_lik[i] = log(psi);
-    }
-    else {
+
+    // Log-likelihood calculation for the new hurdle condition
+    if (place[i] == unit_length[i]) {
+      log_lik[i] = log(psi);  // Log-probability of place = unit_length[i]
+    } else {
       log_lik[i] = log(1 - psi) 
-                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i]) 
-                - log(1 - ((theta * pow(theta, -1) * exp(-theta)) / tgamma(1)));
+                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i] - 1);  // Truncated Generalized Poisson for non-last element
     }
-    log_lik[i] += neg_binomial_2_lpmf(unit_length[i] | mu, phi);
+    log_lik[i] += neg_binomial_2_lpmf(unit_length[i] | mu, phi);  // Negative binomial for unit_length
   }
 }
-
-

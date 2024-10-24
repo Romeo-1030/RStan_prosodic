@@ -35,24 +35,35 @@ getModel <- function(word, file_path, back = F){
 trun_rgen <- function(theta, lambda, unit_length, max_length) {
   prob_list <- c()
   y_list <- c()
+  
+  # Compute unnormalized probabilities for values from 0 to max_length
   for (y in 0:max_length) {
     prob <- (theta * (theta + lambda * y)^(y-1)) * exp(-theta - lambda * y) / factorial(y)
     prob_list <- c(prob_list, prob)
     y_list <- c(y_list, y)
   }
   
+  # Normalize prob_list by dividing it by its sum
+  prob_list <- prob_list / sum(prob_list)
+  
+  # Create the CDF and handle truncation
   cdf <- data.frame(Value = y_list, Proportion = prob_list)
   cdf$cum_sum = cumsum(cdf$Proportion)
   
+  # Truncation and normalization at unit_length
   F_L <- cdf[cdf$Value == unit_length, ]$cum_sum
   cdf$trun_sum <- cdf$cum_sum
   cdf$trun_sum[cdf$Value <= unit_length] <- cdf$cum_sum[cdf$Value <= unit_length] / F_L
-  
   cdf$trun_sum[cdf$Value > unit_length] <- 1
   
+  # Calculate truncated PMF
   cdf$trun_pmf <- c(cdf$trun_sum[1], diff(cdf$trun_sum))
   
+  # Sample a quantity based on the truncated PMF
   quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
+  
+  # Return both the sampled value and the normalized probabilities
+  #return(list(quantities = quantities, prob_list = prob_list))
   return(quantities)
 }
 
@@ -174,41 +185,37 @@ Mix_Pois_Quantities <- function(model, word) {
 trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, max_length, hurdle) {
   prob_list <- c()
   y_list <- c()
-  psi <- inv.logit(unit_length*psi_slope + psi_intercept)
+  psi <- inv.logit(unit_length * psi_slope + psi_intercept)
   
-  # two types of hurdle, hurdle 0, and hurdle 1 and 0 
-  # 1. hurdle 0 place case
+  # Two types of hurdle, hurdle 0, and hurdle 1
+  # 1. Hurdle 0 place case
   if (hurdle == 0) {
     prob_list <- c(prob_list, psi)
     y_list <- c(y_list, 0)
     for (y in 1:max_length) {
-      prob <- (1-psi)* ((theta * (theta + lambda * y)^(y-1)) * exp(-theta - lambda * y) / factorial(y))/ 
-        (1 - (theta * theta^(-1) * exp(-theta)))
-      
+      prob <- (1 - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y))
       prob_list <- c(prob_list, prob)
       y_list <- c(y_list, y)
     }
   }
   
-  # 2. hurdle 1 place case
+  # 2. Hurdle 1 place case
   else {
     prob_list <- c(prob_list, alpha, psi)
     y_list <- c(y_list, 0, 1)
     
-    lpos_0 <- (theta * theta^(-1) * exp(-theta))
-    lpos_1 <- (theta * exp(-theta - lambda))
-    
     for (y in 2:max_length) {
-      prob <- (1-alpha-psi)* ((theta * (theta + lambda * y)^(y-1)) * exp(-theta - lambda * y) /
-                                factorial(y))/(1 - lpos_0 - lpos_1)
-      
+      prob <- (1 - alpha - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y))
       prob_list <- c(prob_list, prob)
       y_list <- c(y_list, y)
     }    
   }
   
+  # Normalize prob_list by dividing by its sum
+  prob_list <- prob_list / sum(prob_list)
+  
   cdf <- data.frame(Value = y_list, Proportion = prob_list)
-  cdf$cum_sum = cumsum(cdf$Proportion)
+  cdf$cum_sum <- cumsum(cdf$Proportion)
   
   F_L <- cdf[cdf$Value == unit_length, ]$cum_sum
   cdf$trun_sum <- cdf$cum_sum
@@ -221,6 +228,7 @@ trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, u
   quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
   return(quantities)
 }
+
 
 
 ### Generate Quantities For Hurdle Model
@@ -266,6 +274,97 @@ Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
   return(final)
 }
 
+trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, max_length, hurdle) {
+  prob_list <- c()
+  y_list <- c()
+  psi <- inv.logit(unit_length * psi_slope + psi_intercept)
+  
+  # Two types of hurdle, hurdle 0, and hurdle 1
+  # 1. Hurdle 0 place case (excluding the last element)
+  if (hurdle == 0) {
+    prob_list <- c(prob_list, psi)
+    y_list <- c(y_list, 0)
+    
+    for (y in 0:(max_length - 1)) {  # Exclude the last element
+      prob <- (1 - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y))
+      prob_list <- c(prob_list, prob)
+      y_list <- c(y_list, y)
+    }
+  }
+  
+  # 2. Hurdle 1 place case (excluding the last two elements)
+  else {
+    prob_list <- c(prob_list, alpha, psi)
+    y_list <- c(y_list, 0, 1)
+    
+    for (y in 0:(max_length - 2)) {  # Exclude the last two elements
+      prob <- (1 - alpha - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y)) 
+      
+      prob_list <- c(prob_list, prob)
+      y_list <- c(y_list, y)
+    }
+  }
+  
+  # Normalize prob_list by dividing by its sum
+  prob_list <- prob_list / sum(prob_list)
+  
+  cdf <- data.frame(Value = y_list, Proportion = prob_list)
+  cdf$cum_sum <- cumsum(cdf$Proportion)
+  
+  F_L <- cdf[cdf$Value == unit_length, ]$cum_sum
+  cdf$trun_sum <- cdf$cum_sum
+  cdf$trun_sum[cdf$Value <= unit_length] <- cdf$cum_sum[cdf$Value <= unit_length] / F_L
+  
+  cdf$trun_sum[cdf$Value > unit_length] <- 1
+  
+  cdf$trun_pmf <- c(cdf$trun_sum[1], diff(cdf$trun_sum))
+  
+  quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
+  return(quantities)
+}
+
+### Generate Quantities For Hurdle Model
+Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = 0) {
+  nb_theta <- rstan::extract(model, pars = c("theta"))
+  nb_lambda <- rstan::extract(model, pars = c("lambda"))
+  nb_phi <- rstan::extract(model, pars = c("phi"))
+  nb_mu <- rstan::extract(model, pars = c("mu"))
+  
+  nb_psi_inter <- rstan::extract(model, pars = c("psi_intercept"))
+  nb_psi_slope <- rstan::extract(model, pars = c("psi_slope"))
+  
+  if (hurdle == 1) {
+    nb_alpha <- rstan::extract(model, pars = c("alpha"))
+  }
+  
+  final = data.frame()
+  
+  for (i in 3801:4000) {
+    nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
+                         prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
+    nb_place <- c()
+    max_length <- max(nb_length)
+    
+    if (hurdle == 1) {
+      alpha = nb_alpha$alpha[i]
+    }
+    else {
+      alpha = NULL
+    }
+    for (length_val in nb_length) {
+      nb_place <- c(nb_place, trun_hurdle(nb_theta$theta[i], nb_lambda$lambda[i], 
+                                          nb_psi_inter$psi_intercept[i],
+                                          nb_psi_slope$psi_slope[i],
+                                          alpha, length_val, max_length, hurdle))
+    }
+    if (back == T) {
+      nb_place <- nb_length - nb_place
+    }
+    generated <- data.frame(nb_length, nb_place)
+    final <- rbind(final, generated)
+  }
+  return(final)
+}
 
 
 ### DF for visualization
