@@ -554,3 +554,15 @@ hurdle <- function(all_df, result) {
   return(max_count)
 }
 
+process_word_hurdle <- function(word, hurdle_model, cri, i, error_words, hurdle_function, hurdle) {
+  result <- tryCatch({
+    hurdle_function(hurdle_model, word, back = cri, hurdle = hurdle)  # Call the input function dynamically
+  }, error = function(e) {
+    message(paste("Error processing word in", deparse(substitute(hurdle_function)), ":", i))
+    error_words <<- c(error_words, i)  # Save the word that caused the error
+    return(NULL)  # Return NULL to handle this case
+  })
+  return(result)
+}
+
+

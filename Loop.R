@@ -96,20 +96,15 @@ for (i in sbc_top200) {
   hurdle_place <- hurdle(all_df_gen, result_gen)
   
   if (hurdle_place == '0' | hurdle_place == '-1') {
-    hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle.stan", back = cri)
-    
-    word_final_hur <- tryCatch({
-      Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 0)
-    }, error = function(e) {
-      message(paste("Error processing word in Hurdle_Pois_Quantities:", i))
-      error_words <<- c(error_words, i)  # Save the word that caused the error
-      return(NULL)  # Return NULL to handle this case
-    })
-    
+    if ((hurdle_place == '0' & cri == F) | (hurdle_place == '-1' & cri == T)){
+      hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle.stan", back = cri)
+      word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities, 0)
+    }else if ((hurdle_place == '0' & cri == T) | (hurdle_place == '-1' & cri == F)) {
+      hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle_rev.stan", back = cri)
+      word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -1)
+    }
     # If word_final_hur is NULL, skip to the next word
     if (is.null(word_final_hur)) next
-    
-    
     waic_hur <- get_waic(hurdle_model)
     waic_hur_sca <- waic_hur / nrow(word)
     output_hur <- df_visual(word_final_hur, word)
@@ -121,28 +116,22 @@ for (i in sbc_top200) {
     if (!dir.exists(word_folder)) {
       dir.create(word_folder, recursive = TRUE)
     }
-    
     # Save the plots
     ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
-    
     sum_hur <- summary(hurdle_model)$summary
     selected_rows_her <- sum_hur[1:6, ]
     flattened_row_her <- as.vector(t(selected_rows_her))
-    
     save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_her, rep(NA, 10), waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
     
   } else if (hurdle_place == '1' | hurdle_place == '-2') {
-    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle2.stan", back = cri)
-    
-    word_final_hur <- tryCatch({
-      Hurdle_Pois_Quantities(hurdle_model, word, back = cri, hurdle = 1)
-    }, error = function(e) {
-      message(paste("Error processing word in Hurdle_Pois_Quantities:", i))
-      error_words <<- c(error_words, i)  # Save the word that caused the error
-      return(NULL)  # Return NULL to handle this case
-    })
-    
+    if ((hurdle_place == '1' & cri == F) | (hurdle_place == '-2' & cri == T)){
+      hurdle_model <- getModel(i, "Stan/gen_pois_hurdle2.stan", back = cri)
+      word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities, 1)
+    }else if (((hurdle_place == '1' & cri == T) | (hurdle_place == '-2' & cri == F))){
+      hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev2.stan", back = cri)
+      word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -2)
+    }
     # If word_final_hur is NULL, skip to the next word
     if (is.null(word_final_hur)) next
     
@@ -165,7 +154,7 @@ for (i in sbc_top200) {
     sum_hur <- summary(hurdle_model)$summary
     selected_rows_her <- sum_hur[1:7, ]
     flattened_row_her <- as.vector(t(selected_rows_her))
-
+    
     save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_her, waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
   }
