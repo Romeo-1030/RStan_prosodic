@@ -13,3 +13,4 @@
 .R/
 .git-credentials
 .gitconfig
+.npm/_logs/*.log
