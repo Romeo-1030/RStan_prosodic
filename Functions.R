@@ -281,28 +281,26 @@ trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha = NUL
   
   # Two types of hurdle, hurdle 0, and hurdle 1
   # 1. Hurdle 0 place case (excluding the last element)
-  if (hurdle == 0) {
-    prob_list <- c(prob_list, psi)
-    y_list <- c(y_list, 0)
+  if (hurdle == -1) {
     
     for (y in 0:(max_length - 1)) {  # Exclude the last element
       prob <- (1 - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y))
       prob_list <- c(prob_list, prob)
       y_list <- c(y_list, y)
     }
+    prob_list <- c(prob_list, psi)
+    y_list <- c(y_list, max_length)
   }
   
   # 2. Hurdle 1 place case (excluding the last two elements)
   else {
-    prob_list <- c(prob_list, alpha, psi)
-    y_list <- c(y_list, 0, 1)
-    
     for (y in 0:(max_length - 2)) {  # Exclude the last two elements
       prob <- (1 - alpha - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y)) 
-      
       prob_list <- c(prob_list, prob)
       y_list <- c(y_list, y)
     }
+    prob_list <- c(prob_list, psi, alpha)
+    y_list <- c(y_list, max_length - 1, max_length)
   }
   
   # Normalize prob_list by dividing by its sum
@@ -324,7 +322,7 @@ trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha = NUL
 }
 
 ### Generate Quantities For Hurdle Model
-Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = 0) {
+Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = -1) {
   nb_theta <- rstan::extract(model, pars = c("theta"))
   nb_lambda <- rstan::extract(model, pars = c("lambda"))
   nb_phi <- rstan::extract(model, pars = c("phi"))
@@ -333,7 +331,7 @@ Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = 0) {
   nb_psi_inter <- rstan::extract(model, pars = c("psi_intercept"))
   nb_psi_slope <- rstan::extract(model, pars = c("psi_slope"))
   
-  if (hurdle == 1) {
+  if (hurdle == -2) {
     nb_alpha <- rstan::extract(model, pars = c("alpha"))
   }
   
@@ -345,14 +343,14 @@ Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = 0) {
     nb_place <- c()
     max_length <- max(nb_length)
     
-    if (hurdle == 1) {
+    if (hurdle == -2) {
       alpha = nb_alpha$alpha[i]
     }
     else {
       alpha = NULL
     }
     for (length_val in nb_length) {
-      nb_place <- c(nb_place, trun_hurdle(nb_theta$theta[i], nb_lambda$lambda[i], 
+      nb_place <- c(nb_place, trun_hurdle_rev(nb_theta$theta[i], nb_lambda$lambda[i], 
                                           nb_psi_inter$psi_intercept[i],
                                           nb_psi_slope$psi_slope[i],
                                           alpha, length_val, max_length, hurdle))
@@ -471,7 +469,7 @@ check_back <- function(word) {
 ## Check which place to hurdle
 complete_rows <- function(df_joined){
   row_to_copy1 <- df_joined[df_joined$nb_length == 1 & df_joined$nb_place == 0, ]
-  row_to_copy2 <- df_joined[df_joinsed$nb_length == 1 & df_joined$nb_place == 1, ]
+  row_to_copy2 <- df_joined[df_joined$nb_length == 1 & df_joined$nb_place == 1, ]
   row_to_copy3 <- df_joined[df_joined$nb_length == 2 & df_joined$nb_place == 1, ]
   
   # Check if a row with label -2 already exists

@@ -785,13 +785,15 @@ source("Functions.R")
 # Parameters
 theta <- 2
 lambda <- 0.5
+psi_intercept <- 0.5
+psi_slope <- 0.1
 unit_length <- 5
-max_length <- 100
+max_length <- 8
+hurdle <- 0  # Test with hurdle = 0
 
-# Run the old version
-old_result <- trun_rgen(theta, lambda, unit_length, max_length)
-print("Old Function Probability Sum:")
-print(sum(old_result$prob_list))  # Check if it sums to 1
+# Call the function and check the normalization
+result <- trun_hurdle(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, max_length, hurdle)
+
 
 
 
@@ -1016,7 +1018,32 @@ result <- output$result
 p3_5 <- plotting(all_df, result, 'with')
 
 print(p3_5)
-print(p6)
+#print(p6)
+```
+
+### Rev Hurdle 1
+
+
+```{r}
+hurdle_neg2_with = getModel("with", "Stan/gen_pois_hurdle_rev2.stan", back = T)
+```
+
+```{r}
+with_hurdle = Hurdle_Pois_Quantities_rev(hurdle_neg2_with, with, back = T, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(with_hurdle, with)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p3_6 <- plotting(all_df, result, 'with')
+
+print(p3_6)
+#print(p6)
 ```
 
 ### waic
@@ -1085,7 +1112,31 @@ result <- output$result
 ```{r}
 p7_5 <- plotting(all_df, result, 'should')
 
-print(p7)
+#print(p7)
+print(p7_5)
+```
+
+### Rev Hurdle 
+
+```{r}
+hurdle_1_should = getModel("should", "Stan/gen_pois_hurdle2_rev.stan", back = F)
+```
+
+```{r}
+should_hurdle = Hurdle_Pois_Quantities(hurdle_1_should, should, back = F, hurdle = 1)
+```
+
+```{r}
+output <- df_visual(should_hurdle, should)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p7_5 <- plotting(all_df, result, 'should')
+
+#print(p7)
 print(p7_5)
 ```
 
@@ -1232,7 +1283,7 @@ gen_pois_her= getModel("her", "Stan/gen_pois.stan", back = T)
 ```
 
 ```{r}
-her_final = Gen_Pois_Quantities(gen_pois_her, because, back = T)
+her_final = Gen_Pois_Quantities(gen_pois_her, her, back = T)
 ```
 
 ```{r}
@@ -1270,7 +1321,7 @@ result <- output$result
 ```{r}
 p10_5 <- plotting(all_df, result, 'her')
 
-print(p10)
+#print(p10)
 print(p10_5)
 ```
 ### waic
@@ -1551,6 +1602,11 @@ result <- output$result
 p16 <- plotting(all_df, result, 'him')
 print(p16)
 ```
+
+```{r}
+hurdle(all_df, result)
+```
+
 
 ### Hurdle
 
