@@ -1,0 +1,2184 @@
+---
+title: "systematic"
+author: "Lu Liu"
+date: "2024-02-29"
+output: html_document
+---
+
+```{r setup, echo=FALSE}
+library(knitr)
+# set global chunk options: images will be 7x5 inches
+knitr::opts_chunk$set(fig.width=7, fig.height=5)
+options(digits = 4)
+```
+
+```{r, include=FALSE}
+# for debugging latex
+options(tinytex.verbose = TRUE)
+```
+
+# Loading Packages
+```{r}
+library(tidyverse)
+library(rstan)
+library(tidyr)
+library(HMMpa)
+library(boot)
+source("Functions.R")
+```
+
+# Loading Data
+```{r}
+setwd("~/Desktop/Projects/sb corpus")
+load("/Users/lu//Desktop/Projects/sb corpus/sbc.Rdata")
+#load("G:\\共用雲端硬碟\\Prosody & Units in Dialogue\\Staircases\\reorganised_code\\sbc.Rdata")
+```
+
+```{r}
+load("sbc.Rdata")
+```
+
+
+```{r}
+sbc$place_minus_1 = sbc$place - 1
+sbc$length_minus_1 = sbc$unitWordLen - 1
+```
+
+# Necessary functions
+
+### Get model 
+```{r}
+getModel <- function(word, file_path, back = F){
+  
+  # Filter the raw data from sbc dataframe for the given word
+  data_raw <- sbc %>%
+    filter(tolower(text) == word) %>%
+    filter(!is.na(place))
+  
+  # front case 
+  if(!back){
+    data_input <- list(
+      N = nrow(data_raw),
+      place = pull(data_raw, place_minus_1),
+      unit_length = pull(data_raw, length_minus_1)
+    )
+  } else { # back case 
+    data_input <- list(
+      N = nrow(data_raw),
+      place = pull(data_raw, length_minus_1) - pull(data_raw, place_minus_1), # according to place - 1
+      unit_length = pull(data_raw, length_minus_1)
+    )
+  }
+
+  stan(
+  file = file_path,
+  data = data_input,
+  chains = 4,                    # Number of chains
+  cores = getOption("mc.cores", 4), # Number of cores to use
+)
+}
+```
+
+
+### CDF for Generalized Poisson
+```{r}
+set.seed(123)
+theta = 0.7823
+lambda = 0.3263
+unit_length = 9
+
+
+trun_rgen <- function(theta, lambda, unit_length, word, max_length) {
+  prob_list <- c()
+  y_list <- c()
+  for (y in 0:max_length) {
+    prob <- (theta * (theta + lambda * y)^(y-1)) * exp(-theta - lambda * y) / factorial(y)
+    prob_list <- c(prob_list, prob)
+    y_list <- c(y_list, y)
+  }
+  
+  cdf <- data.frame(Value = y_list, Proportion = prob_list)
+  cdf$cum_sum = cumsum(cdf$Proportion)
+  
+  F_L <- cdf[cdf$Value == unit_length, ]$cum_sum
+  cdf$trun_sum <- cdf$cum_sum
+  cdf$trun_sum[cdf$Value <= unit_length] <- cdf$cum_sum[cdf$Value <= unit_length] / F_L
+
+  cdf$trun_sum[cdf$Value > unit_length] <- 1
+  
+  cdf$trun_pmf <- c(cdf$trun_sum[1], diff(cdf$trun_sum))
+  
+  quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
+  return(quantities)
+}
+
+```
+
+
+### Generate Quantities For Generalized Poisson
+
+```{r}
+Gen_Pois_Quantities <- function(model, word, back = F){
+  
+  nb_theta <- extract(model, pars = c("theta"))
+  nb_lambda <- extract(model, pars = c("lambda"))
+  nb_phi <- extract(model, pars = c("phi"))
+  nb_mu <- extract(model, pars = c("mu"))
+
+  final = data.frame()
+  # iterate through 4000 times
+  for (i in 1:200) {
+    # generate length
+    nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
+                           prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
+    
+    nb_place <- c()
+    max_length <- max(nb_length)
+    
+    # for each length generate place 
+    for (length_val in nb_length) {
+      nb_place <- c(nb_place, trun_rgen(nb_theta$theta[i], nb_lambda$lambda[i], length_val, word, max_length))
+  
+    }
+    
+    # If data is back, transform the data back to front 
+    if (back == T) {
+      nb_place <- nb_length - nb_place
+    }
+    generated <- data.frame(nb_length, nb_place)
+    final <- rbind(final, generated)
+  }
+  return(final)
+}
+```
+
+### CDF for Mixture Model
+
+```{r}
+trun_mix <- function(theta, lambda, unit_length, max_length) {
+  prob_list <- c()
+  y_list <- c()
+
+  for (y in 0:max_length) {
+    # generalized poisson formula
+    prob <- (theta * (theta + lambda * y)^(y-1)) * exp(-theta - lambda * y) / factorial(y) 
+    prob_list <- c(prob_list, prob)  
+    y_list <- c(y_list, y)
+  }
+  
+  
+  cdf <- data.frame(Value = y_list, Proportion = prob_list)
+  cdf$cum_sum = cumsum(cdf$Proportion)
+  F_L <- cdf[cdf$Value == unit_length, ]$cum_sum
+  cdf$trun_sum <- cdf$cum_sum
+  cdf$trun_sum[cdf$Value <= unit_length] <- cdf$cum_sum[cdf$Value <= unit_length] / F_L
+  cdf$trun_sum[cdf$Value > unit_length] <- 1 # anything outside of the range receives a cdf of 1
+  cdf$trun_pmf <- c(cdf$trun_sum[1], diff(cdf$trun_sum))
+  
+  
+  quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
+
+  return(quantities)
+}
+```
+
+
+
+### Generate Quantities For Mixture Model
+
+```{r}
+Mix_Pois_Quantities <- function(model, word) {
+  nb_theta1 <- rstan::extract(model, pars = c("theta1"))
+  nb_lambda1 <- rstan::extract(model, pars = c("lambda1"))
+  nb_theta2 <- rstan::extract(model, pars = c("theta2"))
+  nb_lambda2 <- rstan::extract(model, pars = c("lambda2"))
+  
+  nb_phi1 <- rstan::extract(model, pars = c("phi1"))
+  nb_mu1 <- rstan::extract(model, pars = c("mu1"))
+  nb_phi2 <- rstan::extract(model, pars = c("phi1"))
+  nb_mu2 <- rstan::extract(model, pars = c("mu1"))
+  nb_psi <- rstan::extract(model, pars = c("psi"))
+  
+  ## generate a v for each length, then divide them into corresponding group then go to cdf,  
+  final = data.frame()
+  # iterate through 4000 times
+  for (j in 1:200) {
+    li <- c()
+    gi <- c()
+    nb_length1 <- c() #
+    nb_length2 <- c()
+    for (i in 1:length(nb_psi$psi)) {  # word$length_minus_1 length above 1000 
+      v <- runif(1, 0, 1)               # plots works fine! but it's wrong. 
+      # generate a value
+      psi <- nb_psi$psi[i]
+      if (v < psi) {
+        len1 <- rnbinom(1, size = nb_phi1$phi1[i], 
+                          prob = nb_phi1$phi1[i] / (nb_phi1$phi1[i] + nb_mu1$mu1[i])) #?
+        nb_length1 <- c(nb_length1, len1)
+        max_length1 <- max(nb_length1)
+        li <- c(li, i)
+        
+      } else {
+        len2 <- rnbinom(1, size = nb_phi2$phi1[i], 
+                              prob = nb_phi2$phi1[i] / (nb_phi2$phi1[i] + nb_mu2$mu1[i]))
+        nb_length2 <- c(nb_length2, len2)
+        max_length2 <- max(nb_length2)
+        gi <- c(gi, i)
+        }
+    }
+  
+    nb_place1 <- c()
+    for (k in 1:length(nb_length1)){
+      nb_place1 <- c(nb_place1, trun_mix(nb_theta1$theta1[li[k]], nb_lambda1$lambda1[li[k]],
+                                         nb_length1[k], max_length1))
+    }
+    
+    nb_place2 <- c()
+    for (k in 1:length(nb_length2)){
+      nb_place2 <- c(nb_place2, trun_mix(nb_theta2$theta2[gi[k]], nb_lambda2$lambda2[gi[k]],
+                                         nb_length2[k], max_length2))
+    }
+    
+    nb_place2 <- nb_length2 - nb_place2
+    
+    nb_length <- c(nb_length1, nb_length2)
+    nb_place <- c(nb_place1, nb_place2)
+    
+    
+    generated <- data.frame(nb_length, nb_place)
+    final <- rbind(final, generated)
+  }
+  return(final)
+}
+```
+
+
+
+### CDF for hurdle model
+
+```{r}
+trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, word, max_length, hurdle) {
+  prob_list <- c()
+  y_list <- c()
+  psi <- inv.logit(unit_length*psi_slope + psi_intercept)
+  
+  # two types of hurdle, hurdle 0, and hurdle 1 and 0 
+  # 1. hurdle 0 place case
+  if (hurdle == 0) {
+    prob_list <- c(prob_list, psi)
+    y_list <- c(y_list, 0)
+    for (y in 1:max_length) {
+      prob <- (1-psi)* ((theta * (theta + lambda * y)^(y-1)) * exp(-theta - lambda * y) / factorial(y))/ 
+      (1 - (theta * theta^(-1) * exp(-theta)))
+
+    prob_list <- c(prob_list, prob)
+    y_list <- c(y_list, y)
+    }
+  }
+  
+  # 2. hurdle 1 place case
+  else {
+    prob_list <- c(prob_list, alpha, psi)
+    y_list <- c(y_list, 0, 1)
+    
+    lpos_0 <- (theta * theta^(-1) * exp(-theta))
+    lpos_1 <- (theta * exp(-theta - lambda))
+    
+    for (y in 2:max_length) {
+      prob <- (1-alpha-psi)* ((theta * (theta + lambda * y)^(y-1)) * exp(-theta - lambda * y) /
+                                factorial(y))/(1 - lpos_0 - lpos_1)
+  
+      prob_list <- c(prob_list, prob)
+      y_list <- c(y_list, y)
+    }    
+  }
+  
+  cdf <- data.frame(Value = y_list, Proportion = prob_list)
+  cdf$cum_sum = cumsum(cdf$Proportion)
+  
+  F_L <- cdf[cdf$Value == unit_length, ]$cum_sum
+  cdf$trun_sum <- cdf$cum_sum
+  cdf$trun_sum[cdf$Value <= unit_length] <- cdf$cum_sum[cdf$Value <= unit_length] / F_L
+
+  cdf$trun_sum[cdf$Value > unit_length] <- 1
+  
+  cdf$trun_pmf <- c(cdf$trun_sum[1], diff(cdf$trun_sum))
+  
+  quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
+  return(quantities)
+}
+```
+
+
+### Generate Quantities For Hurdle Model
+
+```{r}
+Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
+  nb_theta <- rstan::extract(model, pars = c("theta"))
+  nb_lambda <- rstan::extract(model, pars = c("lambda"))
+  nb_phi <- rstan::extract(model, pars = c("phi"))
+  nb_mu <- rstan::extract(model, pars = c("mu"))
+  
+  nb_psi_inter <- rstan::extract(model, pars = c("psi_intercept"))
+  nb_psi_slope <- rstan::extract(model, pars = c("psi_slope"))
+
+  if (hurdle == 1) {
+    nb_alpha <- rstan::extract(model, pars = c("alpha"))
+  }
+  
+  final = data.frame()
+  
+  for (i in 1:200) {
+    nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
+                         prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
+    nb_place <- c()
+    max_length <- max(nb_length)
+    
+    if (hurdle == 1) {
+      alpha = nb_alpha$alpha[i]
+    }
+    else {
+      alpha = NULL
+    }
+    for (length_val in nb_length) {
+      nb_place <- c(nb_place, trun_hurdle(nb_theta$theta[i], nb_lambda$lambda[i], 
+                                        nb_psi_inter$psi_intercept[i],
+                                        nb_psi_slope$psi_slope[i],
+                                        alpha, length_val, word, max_length, hurdle))
+      }
+    if (back == T) {
+      nb_place <- nb_length - nb_place
+    }
+    generated <- data.frame(nb_length, nb_place)
+    final <- rbind(final, generated)
+  }
+  return(final)
+}
+```
+
+
+### DF for visualization
+```{r}
+df_visual <- function(quantities, word) {
+  all_df <- data.frame(nb_length = numeric(), nb_place = numeric(), n.x = numeric(), n.y = numeric())
+  
+  # Calculate the number of iterations based on the lengths of quantities and word
+  num_iterations <- nrow(quantities) / length(word$length_minus_1)
+  
+  for (i in 1:num_iterations) {
+    
+    # for each iteration, do the calculation separately 
+    start_index <- (i - 1) * length(word$length_minus_1) + 1
+    end_index <- i * length(word$length_minus_1)
+    
+    # Subset the data for the current iteration
+    subset_data <- quantities[start_index:end_index, ] %>% group_by(nb_length, nb_place) %>% count
+    
+    # Filter for nb_length < 15 and aggregate the counts
+    subset <- subset_data[subset_data$nb_length < 15,]
+    result <- aggregate(n ~ nb_length, data = subset, FUN = sum)
+    
+    merged_df <- merge(subset, result, by = "nb_length")
+    
+    all_df <- rbind(all_df, merged_df)
+  }
+  
+  group <- word[c("length_minus_1", "place_minus_1")]
+  colnames(group) <- c("nb_length", "nb_place")
+  
+  group <- group %>% group_by(nb_length, nb_place) %>% count #() %>% rename(count = n)
+  # subset <- group[group$nb_length < 15,]
+  result <- aggregate(n ~ nb_length, data = group, FUN = sum)
+  result <- merge(group, result, by = "nb_length")
+  
+  return(list(all_df = all_df, result = result))
+}
+```
+
+
+### plotting 
+
+```{r}
+plotting <- function(all_df, result, word) {
+  
+  labels_map <- result %>% 
+    group_by(nb_length) %>% 
+    summarise(n.y = unique(n.y)) %>%
+    deframe()  
+  custom_labeller <- function(nb_length) {
+    sapply(nb_length, function(x) paste(x, "size:", labels_map[x]))
+  }
+  
+  p <- ggplot(data = all_df, aes(x = nb_place, y = n.x/n.y)) +
+    geom_point(alpha = .015, position = "jitter")
+    
+  p <- p + facet_wrap("nb_length", labeller = as_labeller(custom_labeller)) + 
+    geom_point(data = result %>% filter(nb_length <= 14), color = "red") +
+    labs(title = word) +
+    theme(plot.title = element_text(hjust = 0.5)) + 
+    xlab("place") +  
+    ylab("Count Proportion")   
+  
+  return(p)
+}
+```
+
+### WAIC
+
+```{r}
+library(loo)
+get_waic <- function(stanfit){
+  # compute WAIC from the returned object from Stan
+  # the log likelihood must be named as 'log_lik'
+  waic <- function(log_lik) {
+    Tn <- - sum(log(colMeans(exp(log_lik))))
+    s <- nrow(log_lik)
+    fV <- (sum(colMeans(log_lik^2) - colMeans(log_lik)^2))*(s/(s-1)) #s/s-1 then multiply whole thing by two 
+    waic <- 2*(Tn + fV)
+    waic
+  }
+  stanfit %>% rstan::extract() %>% .$log_lik %>% waic()
+}
+
+
+```
+## Check back or front
+```{r}
+check_back <- function(word) {
+  
+  # Group by length_minus_1 and place_minus_1, then count occurrences in each group 
+  summary <- word %>%
+    group_by(length_minus_1, place_minus_1) %>%
+    summarise(count = n(), .groups = "drop") %>%
+    # Arrange the summarized data by length_minus_1 and then by count in descending order
+    arrange(length_minus_1, desc(count)) %>% 
+    group_by(length_minus_1) %>%
+    #Take the first row from each group, which will be the row with the highest count for each length_minus_1.
+    slice(1) 
+  summary <- summary %>% filter(length_minus_1 <= 14)
+  summary$mode_percentage <- (1+summary$place_minus_1)/(1+summary$length_minus_1)
+  
+  criteria <- mean(summary$mode_percentage > 0.5)
+  #print(criteria)
+  if (criteria > 0.5) {
+    return(T)
+  }
+  else {
+    return(F)
+  }
+}
+```
+
+
+## Check which place to hurdle
+
+
+```{r}
+complete_rows <- function(df_joined){
+  row_to_copy1 <- df_joined[df_joined$nb_length == 1 & df_joined$nb_place == 0, ]
+  row_to_copy2 <- df_joined[df_joined$nb_length == 1 & df_joined$nb_place == 1, ]
+  row_to_copy3 <- df_joined[df_joined$nb_length == 2 & df_joined$nb_place == 1, ]
+  
+  # Check if a row with label -2 already exists
+  if (nrow(row_to_copy1) > 0) {
+    # Modify the label
+    row_to_copy1$label <- -1
+    # Append the row to the data frame
+    df_joined <- rbind(df_joined, row_to_copy1)
+  }
+  if (nrow(row_to_copy2) > 0) {
+    # Modify the label
+    row_to_copy2$label <- -2
+    # Append the row to the data frame
+    df_joined <- rbind(df_joined, row_to_copy2)
+  }
+  if (nrow(row_to_copy3) > 0) {
+    # Modify the label
+    row_to_copy3$label <- -2
+    # Append the row to the data frame
+    df_joined <- rbind(df_joined, row_to_copy3)
+  }
+  return (df_joined)
+}
+```
+
+
+
+
+```{r}
+hurdle <- function(all_df, result) {
+  # Input the dataframe from df_visual (result (original datapoint) and all_df (generated))
+  
+  # Calculate the proportion for the generated data
+  all_df_prop <- all_df %>%
+    mutate(prop = n.x / n.y) %>%
+    group_by(nb_length, nb_place) %>%
+    summarise(prop.df2 = mean(prop), .groups = 'drop')
+  
+  # Calculate the proportion for the original data
+  result <- result %>% 
+    mutate(prop.df1 = n.x / n.y)
+  
+  # Calculate the difference between the two data
+  df_joined <- result %>%
+    inner_join(all_df_prop, by = c("nb_length", "nb_place"), suffix = c(".df1", ".df2")) %>%
+    mutate(prop_diff = abs(prop.df1 - prop.df2)) 
+  
+  # Calculate the standard deviation
+  df_sd <- df_joined %>% 
+    group_by(nb_length) %>%
+    summarise(sd = sd(prop_diff), .groups = 'drop') 
+  
+  labels_map <- result %>% 
+    group_by(nb_length) %>% 
+    summarise(n.y = unique(n.y)) %>%
+    mutate(weight = n.y/sum(n.y))
+
+  df_joined <- df_joined %>%
+    left_join(df_sd, by = "nb_length") %>%  # Join sd to the diff prop df
+    filter(!is.na(sd)) %>%  # Remove missing values
+    mutate(check_sd = prop_diff > 2*sd & prop_diff > quantile(prop_diff, 0.75)) %>%  # Return TRUE for anything greater than 2sd
+    mutate(label = case_when(  
+      nb_place == 0 ~ '0',
+      nb_place == 1 ~ '1',
+      nb_place == nb_length ~ '-1',
+      nb_place == nb_length - 1 ~ '-2',
+      TRUE ~ 'other'
+    )) %>%
+    left_join(labels_map, by = 'nb_length') 
+  
+  df_joined <- complete_rows(df_joined)
+
+  
+  # Summary table
+  summary_table <- df_joined %>%
+    group_by(label) %>%
+    summarise(count_check = sum(check_sd*weight), .groups = 'drop') # check condition
+  
+  print(summary_table)
+  
+  # Find the label with the maximum count_check
+  max_count <- summary_table$label[which.max(summary_table$count_check)] 
+  
+  return(max_count)
+}
+```
+
+
+## Define a function for different model visualizations
+
+```{r}
+generate_vis <- function(word_str, model_type = "gen"){
+  word <- sbc %>%
+    filter(tolower(text) == word_str) %>%
+    filter(!is.na(place))
+  cri <- check_back(word)
+  print(cri)
+  if (model_type == "gen"){
+    model_word = getModel(word_str, "Stan/gen_pois.stan", back = cri)
+    word_final = Gen_Pois_Quantities(model_word, word, back = cri)
+  }
+  else if (model_type == "mix"){
+    model_word = getModel(word_str, "Stan/mixture_model.stan", back = F)
+    word_final = Mix_Pois_Quantities(model_word, word)
+  }
+  else if (model_type == "hur0") {
+    model_word = getModel(word_str, "Stan/gen_pois_hurdle.stan", back = cri)
+    word_final = Hurdle_Pois_Quantities(model_word, word, back = cri, hurdle = 0)
+  }
+  ## Need to check
+  else if (model_type == "hur1") {
+    model_word = getModel(word_str, "Stan/gen_pois_hurdle2.stan", back = cri)
+    word_final = Hurdle_Pois_Quantities(model_word, word, back = cri, hurdle = 1)
+  }
+  output <- df_visual(word_final, word)
+  all_df <- output$all_df
+  result <- output$result
+  
+  p <- plotting(all_df, result, word_str)
+  return (list(p, model_word, word_final))
+}
+
+```
+
+
+# Scratch
+
+find 
+
+```{r}
+front_or_back <- function(word) {
+  word_back <- word %>%
+    group_by(length_minus_1) %>%
+    summarise(proportion = sum(place_minus_1 == length_minus_1, na.rm = TRUE) / n()) %>%
+    arrange(length_minus_1)
+  
+  word_front <- word %>%
+    group_by(length_minus_1) %>% 
+    summarise(proportion = sum(place_minus_1 == 0, na.rm = TRUE) / n()) %>% # Count matching values
+    arrange(length_minus_1) 
+  
+  back_slope <- lm(word_back$proportion ~ word_back$length_minus_1)
+  front_slope <- lm(word_front$proportion ~ word_front$length_minus_1)
+  
+  return(list(back = back_slope, front = front_slope))
+}
+```
+
+```{r}
+front_back_when <- front_or_back(when)
+(back_slope <- front_back_when$back)
+(front_slope <- front_back_when$front)
+```
+
+
+```{r}
+when_back <- when %>%
+  group_by(length_minus_1) %>% 
+  summarise(proportion = sum(place_minus_1 == length_minus_1, na.rm = TRUE) / n()) %>% # Calculate proportion of matching values
+  arrange(length_minus_1)
+
+when_back$length_minus_1
+when_backresult <- when_back$proportion
+when_backresult
+```
+place count / count of all iu at same length, relatively stabler than the following one. 
+
+17  6  3  2  4  4  0  1  0  1  1  1  0  0  0  0  0  0  0
+
+
+```{r}
+when_front <- when %>%
+  group_by(length_minus_1) %>% 
+  summarise(proportion = sum(place_minus_1 == 0, na.rm = TRUE) / n()) %>% # Count matching values
+  arrange(length_minus_1) 
+
+when_frontresult <- when_front$count
+when_frontresult
+
+ggplot(data = data.frame(prop = c(when_back$proportion / max(when_back$proportion),
+                                  when_front$proportion / max(when_front$proportion)),
+                         value = c(1:length(when_back$proportion), 1:length(when_front$proportion)),
+                         fb = rep(c("back", "front"), each = c(length(when_back$proportion), length(when_front$proportion)))),
+       aes(x = value, y = prop, col = fb)) +
+  geom_point()
+```
+
+
+```{r}
+when_summary <- when %>%
+  group_by(length_minus_1, place_minus_1) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  arrange(length_minus_1, desc(count)) %>%
+  group_by(length_minus_1) %>%
+  slice(1) %>%
+  select(length_minus_1, place_minus_1, count)
+
+when_summary <- when_summary %>% filter(length_minus_1 <= 14)
+when_summary$mode_percentage <- (1+when_summary$place_minus_1)/(1+when_summary$length_minus_1)
+print(when_summary)
+```
+
+
+```{r}
+lm(when_summary$place_minus_1~when_summary$length_minus_1)
+``` 
+
+
+```{r}
+plot(when_summary$length_minus_1, when_summary$place_minus_1)
+```
+```{r}
+way <- sbc %>%
+  filter(tolower(text) == 'way') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+way_summary <- way %>%
+  group_by(length_minus_1, place_minus_1) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  arrange(length_minus_1, desc(count)) %>%
+  group_by(length_minus_1) %>%
+  slice(1) %>%
+  select(length_minus_1, place_minus_1, count)
+way_summary <- way_summary %>% filter(length_minus_1 <= 14)
+way_summary$mode_percentage <- (1+way_summary$place_minus_1)/(1+way_summary$length_minus_1)
+print(way_summary)
+
+mean(way_summary$mode_percentage > 0.5)
+```
+
+```{r}
+plot(way_summary$length_minus_1, way_summary$place_minus_1)
+```
+```{r}
+lm(way_summary$place_minus_1~way_summary$length_minus_1)
+``` 
+
+
+```{r}
+check_back(way)
+```
+
+```{r}
+check_back(when)
+```
+
+## Check Hurdle
+
+```{r}
+library(MASS)
+posterior_samples <- rstan::extract(hurdle1_when)
+
+posterior_density <- density(posterior_samples$theta)
+map_estimate <- posterior_density$x[which.max(posterior_density$y)]
+map_estimate
+```
+
+```{r}
+# Example for parameter "mu"
+mu_samples <- posterior_samples$mu
+posterior_density_mu <- density(mu_samples)
+map_estimate_mu <- posterior_density_mu$x[which.max(posterior_density_mu$y)]
+
+# Plot the posterior distribution and the MAP estimate
+hist(mu_samples, breaks = 30, probability = TRUE, main = "Posterior Distribution of mu", xlab = "mu")
+lines(posterior_density_mu, col = "blue", lwd = 2)
+abline(v = map_estimate_mu, col = "red", lwd = 2, lty = 2)
+legend("topright", legend = c("Posterior Density", "MAP Estimate"), col = c("blue", "red"), lty = c(1, 2), lwd = 2)
+
+```
+
+# Try out words
+
+
+check difference between predicted and actual prob at each place for each length, see if there is any outlier. distribution of all differences, try to see 2sd above mean
+
+
+
+
+
+
+
+
+## 1 An
+### Gen
+
+```{r}
+an <- sbc %>%
+  filter(tolower(text) == 'an') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+check_back(an)
+```
+
+```{r}
+gen_pois_an = getModel("an", "Stan/gen_pois.stan", back = T)
+```
+
+
+```{r}
+source("Functions.R")
+# Parameters
+theta <- 2
+lambda <- 0.5
+psi_intercept <- 0.5
+psi_slope <- 0.1
+unit_length <- 5
+max_length <- 8
+hurdle <- 0  # Test with hurdle = 0
+
+# Call the function and check the normalization
+result <- trun_hurdle(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, max_length, hurdle)
+
+
+
+
+```
+
+
+
+
+```{r}
+an_final = Gen_Pois_Quantities(gen_pois_an, an, back = T)
+```
+
+```{r}
+output <- df_visual(an_final, an)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p1 <- plotting(all_df, result, "an")
+print(p1)
+```
+
+
+### Mix
+```{r}
+mix_an = getModel("an", "Stan/mixture_model.stan", back = F)
+```
+
+```{r}
+an_final_mix = Mix_Pois_Quantities(mix_an, an)
+```
+
+```{r}
+output <- df_visual(an_final_mix, an)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p2 <- plotting(all_df, result, 'an')
+print(p2)
+```
+`                                                                                                                 
+
+## 1.5 And
+
+```{r}
+and <- sbc %>%
+  filter(tolower(text) == 'and') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(and)
+cri
+```
+
+
+```{r}
+gen_pois_and = getModel("and", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+and_final = Gen_Pois_Quantities(gen_pois_and, and, back = F)
+```
+
+```{r}
+output <- df_visual(and_final, and)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+# logistic, place being 1 or not, vary hurdle by length? try hurdle first 
+p3 <- plotting(all_df, result)
+print(p3)
+```
+
+### Hurdle 
+
+```{r}
+hurdle1_and = getModel("and", "Stan/gen_pois_hurdle.stan", back = F)
+```
+
+```{r}
+and_final_hurdle = Hurdle_Pois_Quantities(hurdle1_and, and, hurdle = 0, back = F)
+```
+
+```{r}
+output <- df_visual(and_final_hurdle, and)
+all_df <- output$all_df
+result <- output$result
+
+result
+```
+
+change back
+
+```{r}
+# logistic, place being 1 or not, vary hurdle by length? try hurdle first 
+p3_5 <- plotting(all_df, result, 'and')
+print(p3_5)
+```
+
+## 2 For
+
+
+```{r}
+For <- sbc %>%
+  filter(tolower(text) == 'for') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(For)
+cri
+```
+
+### Mix
+```{r}
+mix_for = getModel("for", "Stan/mixture_model.stan", back = F)
+```
+
+```{r}
+for_final_mix = Mix_Pois_Quantities(mix_for, For)
+```
+
+```{r}
+output <- df_visual(for_final_mix, For)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p4 <- plotting(all_df, result, 'for')
+print(p4)
+```
+
+
+## Last (Failed)
+### Gen
+```{r}
+# set initial values to force stan to start 
+# https://discourse.mc-stan.org/t/how-to-define-initial-values-in-stan-in-r/16855
+gen_pois_last = getModel("last", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+last_final = Gen_Pois_Quantities(gen_pois_last, last, back = T)
+```
+
+```{r}
+output <- df_visual(last_final, last)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p5 <- plotting(all_df, result)
+print(p5)
+```
+
+## 3 With
+
+```{r}
+with <- sbc %>%
+  filter(tolower(text) == 'with') %>%
+  filter(!is.na(place))
+```
+
+
+
+
+```{r}
+cri <- check_back(with)
+cri
+```
+
+
+### Gen
+```{r}
+gen_pois_with = getModel("with", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+with_final = Gen_Pois_Quantities(gen_pois_with, with, back = T)
+```
+
+```{r}
+output <- df_visual(with_final, with)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p6 <- plotting(all_df, result, 'with')
+print(p6)
+```
+
+```{r}
+hurdle(all_df, result)
+```
+### Hurdle -2
+
+```{r}
+hurdle_neg2_with = getModel("with", "Stan/gen_pois_hurdle2.stan", back = T)
+```
+
+```{r}
+with_hurdle = Hurdle_Pois_Quantities(hurdle_neg2_with, with, back = T, hurdle = 1)
+```
+
+```{r}
+output <- df_visual(with_hurdle, with)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p3_5 <- plotting(all_df, result, 'with')
+
+print(p3_5)
+#print(p6)
+```
+
+### Rev Hurdle 1
+
+
+```{r}
+hurdle_neg2_with = getModel("with", "Stan/gen_pois_hurdle_rev2.stan", back = T)
+```
+
+```{r}
+with_hurdle = Hurdle_Pois_Quantities_rev(hurdle_neg2_with, with, back = T, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(with_hurdle, with)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p3_6 <- plotting(all_df, result, 'with')
+
+print(p3_6)
+#print(p6)
+```
+
+### waic
+
+```{r}
+(get_waic(gen_pois_with))
+(get_waic(hurdle_neg2_with))
+```
+
+
+## 4 Should
+
+```{r}
+should <- sbc %>%
+  filter(tolower(text) == 'should') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(should)
+cri
+```
+
+
+### Gen
+```{r}
+# try hurdle
+gen_pois_should = getModel("should", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+should_final = Gen_Pois_Quantities(gen_pois_should, should, back = F)
+```
+
+```{r}
+output <- df_visual(should_final, should)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p7 <- plotting(all_df, result, 'should')
+print(p7)
+```
+
+```{r}
+hurdle(all_df, result)
+```
+### Hurdle 1
+
+```{r}
+hurdle_1_should = getModel("should", "Stan/gen_pois_hurdle2.stan", back = F)
+```
+
+```{r}
+should_hurdle = Hurdle_Pois_Quantities(hurdle_1_should, should, back = F, hurdle = 1)
+```
+
+```{r}
+output <- df_visual(should_hurdle, should)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p7_5 <- plotting(all_df, result, 'should')
+
+#print(p7)
+print(p7_5)
+```
+
+### Rev Hurdle 
+
+```{r}
+hurdle_1_should = getModel("should", "Stan/gen_pois_hurdle2_rev.stan", back = F)
+```
+
+```{r}
+should_hurdle = Hurdle_Pois_Quantities(hurdle_1_should, should, back = F, hurdle = 1)
+```
+
+```{r}
+output <- df_visual(should_hurdle, should)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p7_5 <- plotting(all_df, result, 'should')
+
+#print(p7)
+print(p7_5)
+```
+
+### waic
+
+```{r}
+(get_waic(gen_pois_should))
+(get_waic(hurdle_1_should))
+```
+
+## 5 It
+
+```{r}
+it <- sbc %>%
+  filter(tolower(text) == 'it') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(it)
+cri
+```
+
+
+### Mix
+```{r}
+mix_it = getModel("it", "Stan/mixture_model.stan", back = F)
+```
+```{r}
+get_waic(mix_it)
+```
+
+
+```{r}
+gen_it = getModel("it", "Stan/gen_pois.stan", back = F)
+```
+```{r}
+get_waic(gen_it)
+```
+
+```{r}
+it_final_mix = Mix_Pois_Quantities(mix_it, it)
+```
+
+```{r}
+output <- df_visual(it_final_mix, it)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p8 <- plotting(all_df, result)
+print(p8)
+```
+
+## 6 Because
+
+### Gen
+
+```{r}
+because <- sbc %>%
+  filter(tolower(text) == 'because') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(because)
+cri
+```
+
+
+```{r}
+# try hurdle
+gen_pois_because= getModel("because", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+because_final = Gen_Pois_Quantities(gen_pois_because, because, back = F)
+```
+
+```{r}
+output <- df_visual(because_final, because)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p9 <- plotting(all_df, result, 'because')
+print(p9)
+```
+
+
+```{r}
+hurdle(all_df, result)
+```
+### Hurdle 0
+
+```{r}
+hurdle_0_because = getModel("because", "Stan/gen_pois_hurdle.stan", back = F)
+```
+
+```{r}
+because_hurdle = Hurdle_Pois_Quantities(hurdle_0_because, because, back = F, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(because_hurdle, because)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p9_5 <- plotting(all_df, result, 'because')
+
+print(p9)
+print(p9_5)
+```
+### waic
+
+```{r}
+(get_waic(gen_pois_because))
+(get_waic(hurdle_0_because))
+```
+
+## 7 her
+
+### Gen
+
+```{r}
+her <- sbc %>%
+  filter(tolower(text) == 'her') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(her)
+cri
+```
+
+```{r}
+# try hurdle
+gen_pois_her= getModel("her", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+her_final = Gen_Pois_Quantities(gen_pois_her, her, back = T)
+```
+
+```{r}
+output <- df_visual(her_final, her)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p10 <- plotting(all_df, result, 'her')
+print(p10)
+```
+
+```{r}
+hurdle(all_df, result)
+```
+
+### Hurdle -1
+
+```{r}
+hurdle_neg1_her = getModel("her", "Stan/gen_pois_hurdle.stan", back = T)
+```
+
+```{r}
+her_hurdle = Hurdle_Pois_Quantities(hurdle_neg1_her, her, back = T, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(her_hurdle, her)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p10_5 <- plotting(all_df, result, 'her')
+
+#print(p10)
+print(p10_5)
+```
+### waic
+
+divide by sample size 
+```{r}
+(get_waic(gen_pois_her))
+(get_waic(hurdle_neg1_her))
+```
+
+
+## 8 let
+
+### Gen
+
+```{r}
+let <- sbc %>%
+  filter(tolower(text) == 'let') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(let)
+cri
+```
+
+```{r}
+# try hurdle
+gen_pois_let= getModel("let", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+let_final = Gen_Pois_Quantities(gen_pois_let, let, back = F)
+```
+
+```{r}
+output <- df_visual(let_final, let)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p11 <- plotting(all_df, result, 'let')
+print(p11)
+```
+
+
+```{r}
+hurdle(all_df, result)
+```
+## 9 them
+
+### Gen
+
+```{r}
+them <- sbc %>%
+  filter(tolower(text) == 'them') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(them)
+cri
+```
+
+```{r}
+# try hurdle
+gen_pois_them = getModel("them", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+them_final = Gen_Pois_Quantities(gen_pois_them, them, back = T)
+```
+
+```{r}
+output <- df_visual(them_final, them)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p12 <- plotting(all_df, result, 'them')
+print(p12)
+```
+
+
+## 10 when
+
+### Gen
+
+not suitable for the models we're doing. (expection)
+Try mixture to see? logitics
+
+```{r}
+when <- sbc %>%
+  filter(tolower(text) == 'when') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(when)
+cri
+```
+
+```{r}
+# try hurdle
+gen_pois_when = getModel("when", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+when_final = Gen_Pois_Quantities(gen_pois_when, when, back = F)
+```
+
+
+
+```{r}
+hurdle(all_df, result)
+```
+
+```{r}
+output <- df_visual(when_final, when)
+all_df <- output$all_df # generated
+result <- output$result 
+```
+
+
+
+```{r}
+p13 <- plotting(all_df, result, 'when')
+print(p13)
+```
+
+### Hurdle
+
+```{r}
+# try hurdle
+hurdle1_when = getModel("when", "Stan/gen_pois_hurdle.stan", back = F)
+```
+
+```{r}
+when_hurdle = Hurdle_Pois_Quantities(hurdle1_when, when, back = F, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(when_hurdle, when)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p13 <- plotting(all_df, result, 'when')
+print(p13)
+```
+
+
+
+## 11 year
+
+### Gen
+
+```{r}
+year <- sbc %>%
+  filter(tolower(text) == 'year') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(year)
+cri
+```
+
+
+```{r}
+gen_pois_year = getModel("year", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+year_final = Gen_Pois_Quantities(gen_pois_year, year, back = T)
+```
+
+```{r}
+output <- df_visual(year_final, year)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p14 <- plotting(all_df, result)
+print(p14)
+```
+
+## 12 em
+
+### Gen
+
+hurdle for final position 
+
+```{r}
+em <- sbc %>%
+  filter(tolower(text) == 'em') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(em)
+cri
+```
+
+```{r}
+gen_pois_em = getModel("em", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+em_final = Gen_Pois_Quantities(gen_pois_em, em, back = T)
+```
+
+```{r}
+output <- df_visual(em_final, em)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p15 <- plotting(all_df, result, 'em')
+print(p15)
+```
+
+
+
+
+### Hurdle
+
+```{r}
+hurdle1_em = getModel("em", "Stan/gen_pois_hurdle.stan", back = T)
+```
+
+```{r}
+em_hurdle = Hurdle_Pois_Quantities(hurdle1_em, em, back = T, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(em_hurdle, em)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p15_5 <- plotting(all_df, result, 'em')
+print(p15_5)
+```
+## 13 him
+
+### Gen
+
+Hurdle
+
+```{r}
+him <- sbc %>%
+  filter(tolower(text) == 'him') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_him = getModel("him", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+him_final = Gen_Pois_Quantities(gen_pois_him, him, back = T)
+```
+
+```{r}
+output <- df_visual(him_final, him)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p16 <- plotting(all_df, result, 'him')
+print(p16)
+```
+
+```{r}
+hurdle(all_df, result)
+```
+
+
+### Hurdle
+
+```{r}
+hurdle1_him = getModel("him", "Stan/gen_pois_hurdle.stan", back = T)
+```
+
+```{r}
+him_final_hurdle = Hurdle_Pois_Quantities(hurdle1_him, him, back = T, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(him_final_hurdle, him)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p16_5 <- plotting(all_df, result, 'him')
+print(p16_5)
+```
+
+
+## 14 here
+
+### Gen
+
+try hurdle, don't prioritize
+```{r}
+here <- sbc %>%
+  filter(tolower(text) == 'here') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_here = getModel("here", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+here_final = Gen_Pois_Quantities(gen_pois_here, here, back = T)
+```
+
+```{r}
+output <- df_visual(here_final, here)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p17 <- plotting(all_df, result)
+print(p17)
+```
+
+
+### Hurdle
+
+```{r}
+hurdle1_here = getModel("here", "Stan/gen_pois_hurdle.stan", back = T)
+```
+
+```{r}
+here_final_hurdle = Hurdle_Pois_Quantities(hurdle1_here, here, back = T, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(here_final_hurdle, here)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p17_5 <- plotting(all_df, result, 'here')
+print(p17_5)
+```
+
+## 15 if
+
+### Gen
+
+if we have time, try making the parameters of the place dependent on length 
+
+```{r}
+if_ <- sbc %>%
+  filter(tolower(text) == 'if') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_if = getModel("if", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+if_final = Gen_Pois_Quantities(gen_pois_here, if_, back = F)
+```
+
+```{r}
+output <- df_visual(if_final, if_)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p18 <- plotting(all_df, result)
+print(p18)
+```
+
+## 16 man
+
+### Gen
+
+dont know how to fix, leave it
+
+```{r}
+man <- sbc %>%
+  filter(tolower(text) == 'man') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_man = getModel("man", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+man_final = Gen_Pois_Quantities(gen_pois_man, man, back = T)
+```
+
+```{r}
+output <- df_visual(man_final, man)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p19 <- plotting(all_df, result, 'man')
+print(p19)
+```
+
+## 17 maybe
+
+### Gen
+
+```{r}
+maybe <- sbc %>%
+  filter(tolower(text) == 'maybe') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_maybe = getModel("maybe", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+maybe_final = Gen_Pois_Quantities(gen_pois_maybe, maybe, back = F)
+```
+
+```{r}
+output <- df_visual(maybe_final, maybe)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p20 <- plotting(all_df, result, 'maybe')
+print(p20)
+```
+
+## 18 so
+
+### Gen
+
+try bimodal
+
+```{r}
+so <- sbc %>%
+  filter(tolower(text) == 'so') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_so = getModel("so", "Stan/gen_pois.stan", back = F)
+```
+
+```{r}
+so_final = Gen_Pois_Quantities(gen_pois_so, so, back = F)
+```
+
+```{r}
+output <- df_visual(so_final, so)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p21 <- plotting(all_df, result)
+print(p21)
+```
+
+## 19 stuff
+
+### Gen
+
+similar to him, them, try hurdle
+```{r}
+stuff <- sbc %>%
+  filter(tolower(text) == 'stuff') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(stuff)
+cri
+```
+
+```{r}
+gen_pois_stuff = getModel("stuff", "Stan/gen_pois.stan", back = T)
+```
+
+```{r}
+stuff_final = Gen_Pois_Quantities(gen_pois_stuff, stuff, back = T)
+```
+
+```{r}
+output <- df_visual(stuff_final, stuff)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p22 <- plotting(all_df, result, 'stuff')
+print(p22)
+```
+
+### Hurdle
+
+```{r}
+hurdle1_stuff = getModel("stuff", "Stan/gen_pois_hurdle.stan", back = T)
+```
+
+```{r}
+stuff_final_hurdle = Hurdle_Pois_Quantities(hurdle1_stuff, stuff, back = T, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(stuff_final_hurdle, stuff)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p22_5 <- plotting(all_df, result, 'stuff')
+print(p22_5)
+```
+## 20 be
+
+skip for now
+
+```{r}
+be <- sbc %>%
+  filter(tolower(text) == 'be') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_be = getModel("be", "Stan/gen_pois.stan", back = T)
+```
+### Gen
+```{r}
+be_final = Gen_Pois_Quantities(gen_pois_be, be, back = T)
+```
+
+```{r}
+output <- df_visual(be_final, be)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p23 <- plotting(all_df, result, 'be')
+print(p23)
+```
+
+## 21 can 
+
+try hurdle
+
+```{r}
+can <- sbc %>%
+  filter(tolower(text) == 'can') %>%
+  filter(!is.na(place))
+```
+
+
+```{r}
+gen_pois_can = getModel("can", "Stan/gen_pois.stan", back = F)
+```
+
+### Gen
+
+```{r}
+can_final = Gen_Pois_Quantities(gen_pois_can, can, back = F)
+```
+
+```{r}
+output <- df_visual(can_final, can)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p24 <- plotting(all_df, result, 'can')
+print(p24)
+```
+
+
+
+
+More complicated ones
+
+## 22 all
+
+```{r}
+all <- sbc %>%
+  filter(tolower(text) == 'all') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+gen_pois_all = getModel("all", "Stan/gen_pois.stan", back = T)
+```
+
+### Gen
+```{r}
+all_final = Gen_Pois_Quantities(gen_pois_can, all, back = T)
+```
+
+
+```{r}
+output <- df_visual(all_final, all)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p25 <- plotting(all_df, result, 'all')
+print(p25)
+```
+
+## 23 before
+```{r}
+before <- sbc %>%
+  filter(tolower(text) == 'before') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+mix_before = getModel("before", "Stan/mixture_model.stan", back = F)
+```
+
+### Mix
+
+
+```{r}
+before_final_mix = Mix_Pois_Quantities(mix_before, before)
+```
+
+```{r}
+output <- df_visual(before_final_mix, before)
+all_df <- output$all_df
+result <- output$result
+```
+
+```{r}
+p26 <- plotting(all_df, result, 'before')
+print(p26)
+```
+## 24 about
+
+### Gen
+come back to this
+```{r}
+output <- generate_vis("about", "gen")
+p27 <- output[[1]]
+gen_about_model <- output[[2]]
+gen_about_final <- output[[3]]
+print(p27)
+```
+
+
+
+
+
+## 25 around
+### Gen
+
+```{r}
+output <- generate_vis("around", "gen")
+p28 <- output[[1]]
+gen_around_model <- output[[2]]
+gen_around_final <- output[[3]]
+print(p28)
+```
+### hurdle0
+
+```{r}
+output <- generate_vis("around", "hur0")
+p_around_hur0 <- output[[1]]
+hur0_around_model <- output[[2]]
+hur0_around_final <- output[[3]]
+print(p_around_hur0)
+```
+
+
+## 26 be
+### Gen
+try hurdle
+```{r}
+output <- generate_vis("be", "gen")
+p_be_gen <- output[[1]]
+gen_be_model <- output[[2]]
+gen_be_final <- output[[3]]
+print(p_be_gen)
+```
+### hurdle 1
+try hurdle
+```{r}
+output <- generate_vis("be", "hur1")
+p_be_hur <- output[[1]]
+hur_be_model <- output[[2]]
+hur_be_final <- output[[3]]
+print(p_be_hur)
+```
+
+
+
+## 27 five
+### Gen
+
+```{r}
+output <- generate_vis("five", "gen")
+p_five_gen <- output[[1]]
+gen_five_model <- output[[2]]
+gen_five_final <- output[[3]]
+print(p_five_gen)
+```
+## or
+
+### gen
+```{r}
+output <- generate_vis("or", "gen")
+p_or_gen <- output[[1]]
+gen_or_model <- output[[2]]
+gen_or_final <- output[[3]]
+print(p_or_gen)
+```
+
+```{r}
+get_waic(gen_or_model)
+```
+
+### hurdle 0
+```{r}
+output <- generate_vis("or", "hur0")
+p_or_hur0 <- output[[1]]
+hur0_or_model <- output[[2]]
+hur0_or_final <- output[[3]]
+print(p_or_hur0 )
+```
+
+
+
+```{r}
+get_waic(hur0_or_model)
+```
+
+
+### hurdle 1
+```{r}
+output <- generate_vis("or", "hur1")
+p_or_hur1 <- output[[1]]
+hur1_or_model <- output[[2]]
+hur1_or_final <- output[[3]]
+print(p_or_hur1)
+```
+
+
+```{r}
+get_waic(hur1_or_model)
+```
+
+
+### Mixture
+
+```{r}
+output <- generate_vis("or", "mix") # psi depends on length, 
+p_or_mix <- output[[1]]
+mix_or_model <- output[[2]]
+mix_or_final <- output[[3]]
+print(p_or_mix)
+```
+
+
+```{r}
+mix_or_2 <- getModel("or", "Stan/mixture_model.stan", back = F)
+```
+
+```{r}
+traceplot(mix_or_3)
+```
+
+```{r}
+mix_or_3 <- getModel("or", 'Stan/mixture_model_combine.stan')
+```
+
+
+```{r}
+options(buildtools.check = function(action) TRUE )
+```
+
+
+```{r}
+summary(mix_or_3)
+```
+
+
+```{r}
+summary(gen_about_model)
+```
+
+
+
+
+```{r}
+library(shinystan)
+launch_shinystan(mix_or_3)
+```
+```{r}
+or <- sbc %>%
+  filter(tolower(text) == 'or') %>%
+  filter(!is.na(place))
+```
+
+
+
+```{r}
+or_final_3 = Mix_Pois_Quantities(mix_or_3, or)
+```
+
+```{r}
+output <- df_visual(or_final_3, or)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+
+
+
+```{r}
+p4 <- plotting(all_df, result, 'or')
+print(p4)
+```
+
+```{r}
+x <- seq(0, 20, length.out = 1000)
+y <- dgamma(x, 8, rate = 8)
+ggplot(data = data.frame(x = x, y = y), aes(x = x, y = y)) + geom_point()
+```
+
+
+
+
+
+
+
+
