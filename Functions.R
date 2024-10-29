@@ -30,7 +30,10 @@ getModel <- function(word, file_path, back = F){
   )
 }
 
-
+theta <- 2.75
+lambda <- 0.36
+max_length <- 15
+unit_length <- 10
 ### CDF for Generalized Poisson
 trun_rgen <- function(theta, lambda, unit_length, max_length) {
   prob_list <- c()
