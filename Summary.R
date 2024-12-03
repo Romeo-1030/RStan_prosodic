@@ -70,8 +70,8 @@ theta_weight <- 1.0     # Weight for theta_mean
 mu_weight <- 1.0        # Weight for mu_mean
 phi_weight <- 1.0       # Weight for phi_mean
 lambda_weight <- 1.0    # Weight for lambda_mean
-back_weight <- 1.5     # Weight for back_numeric
-hurdle_weight <- 2 # Weight for hurdle_numeric
+back_weight <- 3     # Weight for back_numeric
+hurdle_weight <- 3 # Weight for hurdle_numeric
 
 # Apply weights to each normalized column
 weighted_data <- data.frame(
@@ -168,6 +168,67 @@ plots_cluster_feature_densities("mu_mean")
 plots_cluster_feature_densities("phi_mean")
 plots_cluster_feature_densities("lambda_mean")
 
+
+
+## Test GMM
+
+library(mclust)
+
+# Fit Gaussian Mixture Model
+gmm_model <- Mclust(weighted_data, G = 1:30)  # G specifies the range of clusters to evaluate
+
+# View summary of the model
+summary(gmm_model)
+
+# Optimal number of clusters (based on BIC)
+optimal_clusters <- gmm_model$G
+
+# Cluster assignments for each data point
+gmm_clusters <- gmm_model$classification
+
+# Add cluster assignments to the data
+filtered_results$gmm_cluster <- gmm_clusters
+
+library(factoextra)
+fviz_cluster(gmm_model, data = weighted_data) +
+  labs(title = "GMM Clustering Visualization")
+
+# Assuming `gmm_model` is the result of the Gaussian Mixture Model
+gmm_clusters <- gmm_model$classification
+
+# Add the GMM cluster assignments to the filtered_results dataframe
+filtered_results$cluster_gmm <- gmm_clusters
+
+# View the data with cluster assignments
+GMM_result <- cbind(
+  filtered_results[ , c("word", "back", "theta_mean", "mu_mean", "phi_mean", "lambda_mean")],
+  cluster_gmm = filtered_results$cluster_gmm
+)
+
+# View the result
+View(GMM_result)
+
+GMM_result %>% 
+  mutate(cluster_gmm = as.factor(cluster_gmm)) %>%
+  ggplot(aes(x = theta_mean, col = cluster_gmm, group = cluster_gmm)) + 
+  geom_density() + 
+  facet_wrap(~back)
+
+library(rlang)
+
+plots_cluster_feature_densities <- function(col_name) {
+  GMM_result %>% 
+    mutate(cluster_gmm = as.factor(cluster_gmm)) %>%
+    ggplot(aes(x = !!parse_expr(col_name), col = cluster_gmm, group = cluster_gmm)) + 
+    geom_density() + 
+    facet_wrap(~back)
+  
+}
+
+plots_cluster_feature_densities("theta_mean")
+plots_cluster_feature_densities("mu_mean")
+plots_cluster_feature_densities("phi_mean")
+plots_cluster_feature_densities("lambda_mean")
 
 # ### create plot for word
 # create_plot_for_word <- function(word_input) {
