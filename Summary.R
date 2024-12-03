@@ -144,6 +144,30 @@ for (cluster in unique_clusters) {
 # Reset the plotting layout to default (single plot)
 par(mfrow = c(1, 1))
 
+# 4 plots, 1 kde for each cluster, divide by front and back (2 cases)
+
+filtered_results %>% 
+  mutate(cluster_hc = as.factor(cluster_hc)) %>%
+  ggplot(aes(x = theta_mean, col = cluster_hc, group = cluster_hc)) + 
+  geom_density() + 
+  facet_wrap(~back)
+
+library(rlang)
+
+plots_cluster_feature_densities <- function(col_name) {
+  filtered_results %>% 
+    mutate(cluster_hc = as.factor(cluster_hc)) %>%
+    ggplot(aes(x = !!parse_expr(col_name), col = cluster_hc, group = cluster_hc)) + 
+    geom_density() + 
+    facet_wrap(~back)
+  
+}
+
+plots_cluster_feature_densities("theta_mean")
+plots_cluster_feature_densities("mu_mean")
+plots_cluster_feature_densities("phi_mean")
+plots_cluster_feature_densities("lambda_mean")
+
 
 # ### create plot for word
 # create_plot_for_word <- function(word_input) {
