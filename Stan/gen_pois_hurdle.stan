@@ -48,7 +48,7 @@ transformed parameters {
   real lprior = 0;
   lprior += gamma_lpdf(theta | 2, 0.5); // Specify your prior distribution for theta
   lprior += gamma_lpdf(lambda | 1, 1);//  Specify your prior distribution for lambda
-  lprior += gamma_lpdf(mu | 1, 1);
+  lprior += gamma_lpdf(mu | 1, 1);                                 
   lprior += gamma_lpdf(phi | 1, 1);
 }
 
@@ -62,8 +62,7 @@ model {
     } 
     else {
       target += log(1 - psi) 
-                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i]) 
-                - log(1 - ((theta * pow(theta, -1) * exp(-theta)) / tgamma(1)));
+                  - log(1 - ((theta * pow(theta, -1) * exp(-theta)) / tgamma(1)));
     }
     target += neg_binomial_2_lpmf(unit_length[i] | mu, phi);
   }
