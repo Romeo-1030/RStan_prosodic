@@ -294,10 +294,9 @@ Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
   }
   return(final)
 }
-trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, max_length, hurdle) {
+trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha_intercept = NULL, alpha_slope = NULL, unit_length, max_length, hurdle) {
   prob_list <- c()
   y_list <- c()
-  psi <- inv.logit(unit_length * psi_slope + psi_intercept)
   
   # Two types of hurdle, hurdle 0, and hurdle 1
   # 1. Hurdle 0 place case (excluding the last element)
@@ -310,6 +309,7 @@ trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha = NUL
     exp(-theta - lambda * max_length_minus_1) / factorial(max_length_minus_1)
   
   if (hurdle == -1) {
+    psi <- inv.logit(unit_length * psi_slope + psi_intercept)
     
     for (y in 0:(max_length - 1)) {  # Exclude the last element
       prob <- (1 - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y))/
@@ -334,11 +334,20 @@ trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha = NUL
     
     quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
     
-    
   }
   
   # 2. Hurdle 1 place case (excluding the last two elements)
   else {
+    logits <- c(
+      psi_intercept + psi_slope * unit_length,  # Logit for psi
+      alpha_intercept + alpha_slope * unit_length,  # Logit for alpha
+      0  # Logit for remaining probability
+    )
+    # Compute softmax probabilities
+    softmax_probs <- exp(logits) / sum(exp(logits))
+    psi <- softmax_probs[1]
+    alpha <- softmax_probs[2]
+    
     for (y in 0:(max_length - 2)) {  # Exclude the last two elements
       prob <- (1 - alpha - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y))/
         (1 - lpos_max_length - lpos_max_length_minus_1)
@@ -361,7 +370,7 @@ trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha = NUL
     cdf$trun_pmf[cdf$Value < unit_length - 1] <- cdf$trun_pmf[cdf$Value < unit_length - 1] * F_L
     cdf$trun_pmf[cdf$Value > unit_length] <- 0
     
-    
+    quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
   }
   return(quantities)
 }
@@ -378,7 +387,8 @@ Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = -1) {
   nb_psi_slope <- rstan::extract(model, pars = c("psi_slope"))
   
   if (hurdle == -2) {
-    nb_alpha <- rstan::extract(model, pars = c("alpha"))
+    alpha_inter <- rstan::extract(model, pars = c("alpha_intercept"))
+    alpha_slo <- rstan::extract(model, pars = c("alpha_slope"))
   }
   
   final = data.frame()
@@ -390,17 +400,22 @@ Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = -1) {
     max_length <- max(nb_length)
     
     if (hurdle == -2) {
-      alpha = nb_alpha$alpha[i]
+      alpha_intercept <- alpha_inter$alpha_intercept[i]
+      alpha_slope <- alpha_slo$alpha_slope[i]
     }
     else {
-      alpha = NULL
+      alpha_intercept <- NULL
+      alpha_slope <- NULL
+      
     }
     for (length_val in nb_length) {
       nb_place <- c(nb_place, trun_hurdle_rev(nb_theta$theta[i], nb_lambda$lambda[i], 
-                                          nb_psi_inter$psi_intercept[i],
-                                          nb_psi_slope$psi_slope[i],
-                                          alpha, length_val, max_length, hurdle))
+                                              nb_psi_inter$psi_intercept[i],
+                                              nb_psi_slope$psi_slope[i],
+                                              alpha_intercept, alpha_slope,
+                                              length_val, max_length, hurdle))
     }
+
     if (back == T) {
       nb_place <- nb_length - nb_place
     }

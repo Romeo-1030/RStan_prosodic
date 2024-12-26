@@ -1025,11 +1025,11 @@ print(p3_5)
 
 
 ```{r}
-hurdle_neg2_with = getModel("with", "Stan/gen_pois_hurdle_rev2.stan", back = T)
+hurdle_neg2_with = getModel("with", "Stan/hurdle_soft_test.stan", back = T)
 ```
 
 ```{r}
-with_hurdle = Hurdle_Pois_Quantities_rev(hurdle_neg2_with, with, back = T, hurdle = 0)
+with_hurdle = Hurdle_Pois_Quantities_rev(hurdle_neg2_with, with, back = T, hurdle = -2)
 ```
 
 ```{r}
