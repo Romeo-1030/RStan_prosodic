@@ -119,9 +119,9 @@ for (i in sbc_top200) {
     # Save the plots
     ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
     sum_hur <- summary(hurdle_model)$summary
-    selected_rows_her <- sum_hur[1:6, ]
-    flattened_row_her <- as.vector(t(selected_rows_her))
-    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_her, rep(NA, 10), waic_hur, waic_hur_sca)
+    selected_rows_hur <- sum_hur[1:6, ]
+    flattened_row_hur <- as.vector(t(selected_rows_hur))
+    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, rep(NA, 10), waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
     
   } else if (hurdle_place == '1' | hurdle_place == '-2') {
@@ -152,10 +152,10 @@ for (i in sbc_top200) {
     ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
     
     sum_hur <- summary(hurdle_model)$summary
-    selected_rows_her <- sum_hur[1:7, ]
-    flattened_row_her <- as.vector(t(selected_rows_her))
+    selected_rows_hur <- sum_hur[1:7, ]
+    flattened_row_hur <- as.vector(t(selected_rows_hur))
     
-    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_her, waic_hur, waic_hur_sca)
+    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
   }
   
