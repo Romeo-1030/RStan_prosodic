@@ -180,7 +180,7 @@ Mix_Pois_Quantities <- function(model, word) {
   return(final)
 }
 
-trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, unit_length, max_length, hurdle) {
+trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha_intercept = NULL, alpha_slope = NULL, unit_length, max_length, hurdle) {
   prob_list <- c()
   y_list <- c()
   psi <- inv.logit(unit_length*psi_slope + psi_intercept)
@@ -215,6 +215,16 @@ trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha = NULL, u
   
   # 2. hurdle 1 place case
   else {
+    
+    logits <- c(
+      psi_intercept + psi_slope * unit_length,
+      alpha_intercept + alpha_slope * unit_length,
+      0
+    )
+    softmax_probs <- exp(logits) / sum(exp(logits))
+    psi <- softmax_probs[1]
+    alpha <- softmax_probs[2]
+    
     prob_list <- c(prob_list, alpha, psi)
     y_list <- c(y_list, 0, 1)
     
@@ -263,7 +273,8 @@ Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
   nb_psi_slope <- rstan::extract(model, pars = c("psi_slope"))
   
   if (hurdle == 1) {
-    nb_alpha <- rstan::extract(model, pars = c("alpha"))
+    alpha_inter <- rstan::extract(model, pars = c("alpha_intercept"))
+    alpha_slo <- rstan::extract(model, pars = c("alpha_slope"))
   }
   
   final = data.frame()
@@ -275,16 +286,19 @@ Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
     max_length <- max(nb_length)
     
     if (hurdle == 1) {
-      alpha = nb_alpha$alpha[i]
+      alpha_intercept <- alpha_inter$alpha_intercept[i]
+      alpha_slope <- alpha_slo$alpha_slope[i]
     }
     else {
-      alpha = NULL
+      alpha_intercept <- NULL
+      alpha_slope <- NULL
     }
     for (length_val in nb_length) {
       nb_place <- c(nb_place, trun_hurdle(nb_theta$theta[i], nb_lambda$lambda[i], 
                                           nb_psi_inter$psi_intercept[i],
                                           nb_psi_slope$psi_slope[i],
-                                          alpha, length_val, max_length, hurdle))
+                                          alpha_intercept, alpha_slope,
+                                          length_val, max_length, hurdle))
     }
     if (back == T) {
       nb_place <- nb_length - nb_place
@@ -294,6 +308,7 @@ Hurdle_Pois_Quantities <- function(model, word, back = F, hurdle = 0) {
   }
   return(final)
 }
+
 trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha_intercept = NULL, alpha_slope = NULL, unit_length, max_length, hurdle) {
   prob_list <- c()
   y_list <- c()

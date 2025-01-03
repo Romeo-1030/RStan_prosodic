@@ -2176,7 +2176,35 @@ ggplot(data = data.frame(x = x, y = y), aes(x = x, y = y)) + geom_point()
 ```
 
 
+## very
 
+```{r}
+very <- sbc %>%
+  filter(tolower(text) == 'very') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+hurdle_neg2_very = getModel("very", "Stan/hurdle_soft_test.stan", back = F)
+```
+
+```{r}
+very_hurdle = Hurdle_Pois_Quantities_rev(hurdle_neg2_very, very, back = F, hurdle = -2)
+```
+
+```{r}
+output <- df_visual(very_hurdle, very)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p3_6 <- plotting(all_df, result, 'very')
+
+print(p3_6)
+#print(p6)
+```
 
 
 
