@@ -98,10 +98,10 @@ for (i in sbc_top200) {
   
   if (hurdle_place == '0' | hurdle_place == '-1') {
     if ((hurdle_place == '0' & cri == F) | (hurdle_place == '-1' & cri == T)){
-      hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle.stan", back = cri)
+      hurdle_model <- getModel(i, "Stan/gen_pois_hurdle.stan", back = cri)
       word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities, 0)
     }else if ((hurdle_place == '0' & cri == T) | (hurdle_place == '-1' & cri == F)) {
-      hurdle_model <- getModel(i, "stan_files/gen_pois_hurdle_rev.stan", back = cri)
+      hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev.stan", back = cri)
       word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -1)
     }
     # If word_final_hur is NULL, skip to the next word
