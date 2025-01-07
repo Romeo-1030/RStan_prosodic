@@ -90,7 +90,7 @@ for (i in sbc_top200) {
   flattened_row <- as.vector(t(selected_rows))
   
   
-  save_gen <- c(i, 'gen', cri, NA, flattened_row, rep(NA, 30), waic_gen, waic_gen_sca)
+  save_gen <- c(i, 'gen', cri, NA, flattened_row, rep(NA, 40), waic_gen, waic_gen_sca)
   df <- rbind(df, save_gen)
   
   # check hurdle location
@@ -122,7 +122,7 @@ for (i in sbc_top200) {
     sum_hur <- summary(hurdle_model)$summary
     selected_rows_hur <- sum_hur[1:6, ]
     flattened_row_hur <- as.vector(t(selected_rows_hur))
-    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, rep(NA, 10), waic_hur, waic_hur_sca)
+    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, rep(NA, 20), waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
     
   } else if (hurdle_place == '1' | hurdle_place == '-2') {
@@ -159,11 +159,7 @@ for (i in sbc_top200) {
     save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, waic_hur, waic_hur_sca)
     df <- rbind(df, save_hur)
   }
-  
+  colnames(df) <- column_names
+  write.csv(df, "results.csv", row.names = FALSE)
 }
-
-colnames(df) <- column_names
-
-write.csv(df, "results2.csv", row.names = FALSE)
-
 
