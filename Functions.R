@@ -63,8 +63,8 @@ trun_rgen <- function(theta, lambda, unit_length, max_length) {
   quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
   
   # Return both the sampled value and the normalized probabilities
-  return(list(quantities = quantities, cdf = cdf))
-  #return(quantities)
+  #return(list(quantities = quantities, cdf = cdf))
+  return(quantities)
 }
 
 
