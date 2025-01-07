@@ -1095,7 +1095,7 @@ hurdle(all_df, result)
 ### Hurdle 1
 
 ```{r}
-hurdle_1_should = getModel("should", "Stan/gen_pois_hurdle2.stan", back = F)
+hurdle_1_should = getModel("should", "Stan/hurdle_soft_test.stan", back = F)
 ```
 
 ```{r}
@@ -2206,7 +2206,41 @@ print(p3_6)
 #print(p6)
 ```
 
+### do
 
+```{r}
+do <- sbc %>%
+  filter(tolower(text) == 'do') %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(do)
+cri
+```
+
+
+```{r}
+hurdle_1_do = getModel("do", "Stan/hurdle_soft_test.stan", back = F)
+```
+
+```{r}
+do_hurdle = Hurdle_Pois_Quantities(hurdle_1_do, do, back = F, hurdle = 1)
+```
+
+```{r}
+output <- df_visual(do_hurdle, do)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p28 <- plotting(all_df, result, 'do')
+
+#print(p7)
+print(p28)
+```
 
 
 

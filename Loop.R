@@ -37,8 +37,9 @@ column_names <- c(
   "psi_intercept_mean", "psi_intercept_se_mean", "psi_intercept_sd", "psi_intercept_2.5%", "psi_intercept_25%", "psi_intercept_50%",
   "psi_intercept_75%", "psi_intercept_97.5%", "psi_intercept_n_eff", "psi_intercept_Rhat", "psi_slope_mean", "psi_slope_se_mean",
   "psi_slope_sd", "psi_slope_2.5%", "psi_slope_25%", "psi_slope_50%", "psi_slope_75%", "psi_slope_97.5%", "psi_slope_n_eff",
-  "psi_slope_Rhat", "alpha_mean", "alpha_se_mean", "alpha_sd", "alpha_2.5%", "alpha_25%", "alpha_50%", "alpha_75%", "alpha_97.5%",
-  "alpha_n_eff", "alpha_Rhat", "waic", "waic_scaled"
+  "psi_slope_Rhat", "alpha_intercept_mean", "alpha_intercept_se_mean", "alpha_intercept_sd", "alpha_intercept_2.5%", "alpha_intercept_25%", "alpha_intercept_50%", "alpha_intercept_75%", "alpha_intercept_97.5%",
+  "alpha_intercept_n_eff", "alpha_intercept_Rhat", "alpha_slope_mean", "alpha_slope_se_mean", "alpha_slope_sd", "alpha_slope_2.5%", "alpha_slope_25%", "alpha_slope_50%", "alpha_slope_75%", "alpha_slope_97.5%",
+  "alpha_slope_n_eff", "alpha_slope_Rhat", "waic", "waic_scaled"
 )
 
 if (!dir.exists("Figures")) {
@@ -152,7 +153,7 @@ for (i in sbc_top200) {
     ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
     
     sum_hur <- summary(hurdle_model)$summary
-    selected_rows_hur <- sum_hur[1:7, ]
+    selected_rows_hur <- sum_hur[1:8, ]
     flattened_row_hur <- as.vector(t(selected_rows_hur))
     
     save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, waic_hur, waic_hur_sca)

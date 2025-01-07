@@ -29,10 +29,10 @@ parameters {
   real<lower = 0, upper = 1> lambda;
   real<lower = 0> mu; 
   real<lower = 0> phi;
-  real alpha_intercept;  // Intercept for alpha logits
-  real alpha_slope;      // Slope for alpha logits
   real psi_intercept;    // Intercept for psi logits
   real psi_slope;        // Slope for psi logits
+  real alpha_intercept;  // Intercept for alpha logits
+  real alpha_slope;      // Slope for alpha logits
 }
 
 transformed parameters {
