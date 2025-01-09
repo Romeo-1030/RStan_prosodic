@@ -48,7 +48,7 @@ if (!dir.exists("Figures")) {
 
 error_words <- c()
 
-for (i in sbc_top200) {
+for (i in sbc_top200[1]) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%

@@ -38,6 +38,12 @@ parameters {
 transformed parameters {
   real<lower=0, upper=1> psi[N];
   real<lower=0, upper=1> alpha[N];
+  
+  real lprior = 0;
+  lprior += gamma_lpdf(theta | 2, 0.5);
+  lprior += gamma_lpdf(lambda | 1, 1);
+  lprior += gamma_lpdf(mu | 8, 1);
+  lprior += gamma_lpdf(phi | 2, 0.25);
 
   for (i in 1:N) {
     vector[3] logits;
@@ -56,10 +62,7 @@ transformed parameters {
 
 model {
   // Priors
-  target += gamma_lpdf(theta | 2, 0.5);
-  target += gamma_lpdf(lambda | 1, 1);
-  target += gamma_lpdf(mu | 1, 1);
-  target += gamma_lpdf(phi | 1, 1);
+  target += lprior;
 
   // Likelihood
   for (i in 1:N) {

@@ -2242,5 +2242,20 @@ p28 <- plotting(all_df, result, 'do')
 print(p28)
 ```
 
+### 'd
 
+```{r}
+d <- sbc %>%
+  filter(tolower(text) == "'d") %>%
+  filter(!is.na(place))
+```
+
+
+```{r}
+hurdle_1_do = getModel("'d", "Stan/gen_pois_hurdle2.stan", back = F)
+```
+
+```{r}
+d_hurdle = Hurdle_Pois_Quantities(hurdle_1_do, do, back = F, hurdle = 1)
+```
 
