@@ -2221,7 +2221,7 @@ cri
 
 
 ```{r}
-hurdle_1_do = getModel("do", "Stan/hurdle_soft_test.stan", back = F)
+hurdle_1_do = getModel("do", "Stan/gen_pois_hurdle2.stan", back = F)
 ```
 
 ```{r}
@@ -2252,10 +2252,23 @@ d <- sbc %>%
 
 
 ```{r}
-hurdle_1_do = getModel("'d", "Stan/gen_pois_hurdle2.stan", back = F)
+hurdle_1_d = getModel("'d", "Stan/gen_pois_hurdle2.stan", back = F)
 ```
 
 ```{r}
-d_hurdle = Hurdle_Pois_Quantities(hurdle_1_do, do, back = F, hurdle = 1)
+d_hurdle = Hurdle_Pois_Quantities(hurdle_1_d, d, back = F, hurdle = 1)
 ```
 
+```{r}
+output <- df_visual(d_hurdle, d)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p29 <- plotting(all_df, result, "'d")
+
+#print(p7)
+print(p29)
+```

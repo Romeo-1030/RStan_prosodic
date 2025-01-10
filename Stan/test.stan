@@ -31,14 +31,12 @@ parameters {
   real<lower = 0> phi;
   real psi_intercept;    // Intercept for psi logits
   real psi_slope;        // Slope for psi logits
-  real alpha_intercept;  // Intercept for alpha logits
-  real alpha_slope;      // Slope for alpha logits
+  real alpha_intercept;  // Intercept for alpha
+  real alpha_slope;      // Slope for alpha
 }
 
 transformed parameters {
-  real<lower=0, upper=1> psi[N];
-  real<lower=0, upper=1> alpha[N];
-  
+
   real lprior = 0;
   lprior += gamma_lpdf(theta | 2, 0.5);
   lprior += gamma_lpdf(lambda | 1, 1);
@@ -48,45 +46,43 @@ transformed parameters {
   lprior += normal_lpdf(alpha_slope | 0, 1);      // Prior for alpha_slope
   lprior += normal_lpdf(psi_intercept | 0, 5);    // Prior for psi_intercept
   lprior += normal_lpdf(psi_slope | 0, 1);        // Prior for psi_slope
-
+  
+  real raw_alpha;
+  real raw_psi;
+  real alpha[N];
+  real psi[N];
+  
   for (i in 1:N) {
-    vector[3] logits;
-    
-    // Compute logits as a function of unit_length[i]
-    logits[1] = psi_intercept + psi_slope * unit_length[i];   // Logit for psi
-    logits[2] = alpha_intercept + alpha_slope * unit_length[i]; // Logit for alpha
-    logits[3] = 0;  // Logit for the remaining probability
-
-    // Apply softmax transformation
-    vector[3] probs = softmax(logits);
-    psi[i] = probs[1];
-    alpha[i] = probs[2];
+    raw_alpha = exp(alpha_intercept + alpha_slope * unit_length[i]);
+    raw_psi = exp(psi_intercept + psi_slope * unit_length[i]);
+  
+    // Normalize to ensure sum to 1
+    alpha[i] = raw_alpha / (raw_alpha + raw_psi + 1);
+    psi[i] = raw_psi / (raw_alpha + raw_psi + 1);
   }
 }
 
 model {
-  // Priors
-  target += lprior;
-
-  // Likelihood
+  target += lprior;  // Add priors
+  
   for (i in 1:N) {
     if (place[i] == 0) {
-      target += log(alpha[i]);  // Probability of place = unit_length[i]
+      target += log(alpha[i]);
     } 
     else if (place[i] == 1) {
-      target += log(psi[i]);  // Probability of place = unit_length[i] - 1
+      target += log(psi[i]);
     } 
     else {
       real lpos_0 = (theta * pow(theta, -1) * exp(-theta)) / tgamma(1);
       real lpos_1 = (theta * exp(-theta - lambda)) / tgamma(2);
-      target += log(1 - psi[i] - alpha[i])
-                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i])
+      target += log(1 - alpha[i] - psi[i]) 
+                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i]) 
                 - log(1 - lpos_0 - lpos_1);
     }
-
-    target += neg_binomial_2_lpmf(unit_length[i] | mu, phi);  // Negative binomial for unit_length
+    target += neg_binomial_2_lpmf(unit_length[i] | mu, phi);
   }
 }
+
 
 generated quantities {
   real log_lik[N];
@@ -101,11 +97,10 @@ generated quantities {
     else {
       real lpos_0 = (theta * pow(theta, -1) * exp(-theta)) / tgamma(1);
       real lpos_1 = (theta * exp(-theta - lambda)) / tgamma(2);
-      log_lik[i] = log(1 - psi[i] - alpha[i])
-                  + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i])
-                  - log(1 - lpos_0 - lpos_1);
+      log_lik[i] = log(1 - alpha[i] - psi[i]) 
+                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i]) 
+                - log(1 - lpos_0 - lpos_1);
     }
-
     log_lik[i] += neg_binomial_2_lpmf(unit_length[i] | mu, phi);
   }
 }
