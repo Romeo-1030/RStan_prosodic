@@ -35,7 +35,19 @@ parameters {
   real alpha_slope;      // Slope for alpha logits
 }
 
+
 transformed parameters {
+  
+  real lprior = 0;
+  lprior += gamma_lpdf(theta | 2, 0.5);
+  lprior += gamma_lpdf(lambda | 1, 1);
+  lprior += gamma_lpdf(mu | 8, 1);
+  lprior += gamma_lpdf(phi | 2, 0.25);
+  lprior += normal_lpdf(alpha_intercept | 0, 5);  // Prior for alpha_intercept
+  lprior += normal_lpdf(alpha_slope | 0, 1);      // Prior for alpha_slope
+  lprior += normal_lpdf(psi_intercept | 0, 5);    // Prior for psi_intercept
+  lprior += normal_lpdf(psi_slope | 0, 1);        // Prior for psi_slope
+  
   real<lower=0, upper=1> psi[N];
   real<lower=0, upper=1> alpha[N];
 
@@ -56,10 +68,7 @@ transformed parameters {
 
 model {
   // Priors
-  target += gamma_lpdf(theta | 2, 0.5);
-  target += gamma_lpdf(lambda | 1, 1);
-  target += gamma_lpdf(mu | 1, 1);
-  target += gamma_lpdf(phi | 1, 1);
+  target += lprior;
 
   // Likelihood
   for (i in 1:N) {

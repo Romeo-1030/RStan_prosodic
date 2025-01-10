@@ -2272,3 +2272,38 @@ p29 <- plotting(all_df, result, "'d")
 #print(p7)
 print(p29)
 ```
+
+### 'll
+
+```{r}
+ll <- sbc %>%
+  filter(tolower(text) == "'ll") %>%
+  filter(!is.na(place))
+```
+
+```{r}
+cri <- check_back(ll)
+cri
+```
+
+```{r}
+hurdle_1_ll = getModel("'ll", "Stan/gen_pois_hurdle2.stan", back = F)
+```
+
+```{r}
+ll_hurdle = Hurdle_Pois_Quantities(hurdle_1_ll, ll, back = F, hurdle = 1)
+```
+
+```{r}
+output <- df_visual(ll_hurdle, ll)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p30 <- plotting(all_df, result, "'ll")
+
+#print(p7)
+print(p30)
+```
