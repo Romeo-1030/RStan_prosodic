@@ -1713,6 +1713,29 @@ p18 <- plotting(all_df, result)
 print(p18)
 ```
 
+### hur 0
+
+
+```{r}
+hur_pois_if = getModel("if", "Stan/gen_pois_hurdle.stan", back = F)
+```
+
+```{r}
+if_hurdle = Hurdle_Pois_Quantities(hur_pois_if, if_, back = F, hurdle = 0)
+```
+
+```{r}
+output <- df_visual(if_hurdle, if_)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p18_5 <- plotting(all_df, result, 'if')
+print(p18_5)
+```
+
 ## 16 man
 
 ### Gen
@@ -1743,6 +1766,9 @@ result <- output$result
 p19 <- plotting(all_df, result, 'man')
 print(p19)
 ```
+
+
+
 
 ## 17 maybe
 
@@ -2206,7 +2232,7 @@ print(p3_6)
 #print(p6)
 ```
 
-### do
+## do
 
 ```{r}
 do <- sbc %>%
@@ -2242,7 +2268,7 @@ p28 <- plotting(all_df, result, 'do')
 print(p28)
 ```
 
-### 'd
+## 'd
 
 ```{r}
 d <- sbc %>%
@@ -2273,7 +2299,25 @@ p29 <- plotting(all_df, result, "'d")
 print(p29)
 ```
 
-### 'll
+
+```{r}
+samples <- extract(hurdle_1_d)
+
+if (is.vector(d_hurdle$nb_place)) {
+  d_hurdle$nb_place <- matrix(d_hurdle$nb_place, ncol = 1)
+}
+
+observed_variance <- var(d$place_minus_1)
+predicted_variances <- apply(d_hurdle$nb_place, 2, var)
+mean_predicted_variance <- mean(predicted_variances)
+
+# Overdispersion ratio
+overdispersion_ratio <- observed_variance / mean_predicted_variance
+print(overdispersion_ratio)
+```
+
+
+## 'll
 
 ```{r}
 ll <- sbc %>%
@@ -2307,3 +2351,94 @@ p30 <- plotting(all_df, result, "'ll")
 #print(p7)
 print(p30)
 ```
+
+
+## this
+
+
+```{r}
+this <- sbc %>%
+  filter(tolower(text) == "this") %>%
+  filter(!is.na(place))
+```
+
+
+```{r}
+mix_this = getModel("this", "Stan/mixture_model.stan", back = F)
+```
+
+```{r}
+this_final_mix = Mix_Pois_Quantities(mix_this, this)
+```
+
+```{r}
+output <- df_visual(this_final_mix, this)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p31 <- plotting(all_df, result, "this")
+print(p31)
+```
+
+## that
+
+```{r}
+that <- sbc %>%
+  filter(tolower(text) == "that") %>%
+  filter(!is.na(place))
+```
+
+
+```{r}
+mix_that = getModel("that", "Stan/mixture_model.stan", back = F)
+```
+
+```{r}
+that_final_mix = Mix_Pois_Quantities(mix_that, that)
+```
+
+```{r}
+output <- df_visual(that_final_mix, that)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p32 <- plotting(all_df, result, "that")
+print(p32)
+```
+
+
+## it
+
+```{r}
+it <- sbc %>%
+  filter(tolower(text) == "it") %>%
+  filter(!is.na(place))
+```
+
+
+```{r}
+rev_it = getModel("it", "Stan/test_rev.stan", back = F)
+```
+
+```{r}
+it_final = Hurdle_Pois_Quantities_rev(rev_it, it, back = F, hurdle = -1)
+```
+
+```{r}
+output <- df_visual(it_final, it)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p33 <- plotting(all_df, result, "it")
+print(p33)
+```
+
