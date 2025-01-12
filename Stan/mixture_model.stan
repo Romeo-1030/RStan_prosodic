@@ -53,12 +53,12 @@ parameters {
 
 transformed parameters {
   real lprior = 0;
-  lprior += gamma_lpdf(theta1 | 16, 4); 
-  lprior += beta_lpdf(lambda1 | 8, 8); // try something like (lambda + 1)/2 follows (support of 0-1) beta distribution
-  lprior += gamma_lpdf(theta2 | 16, 4); 
-  lprior += beta_lpdf(lambda2 | 8, 8); 
-  lprior += gamma_lpdf(mu | 8, 8);
-  lprior += gamma_lpdf(phi | 8, 8);
+  lprior += gamma_lpdf(theta1 | 2, 0.5); 
+  lprior += beta_lpdf(lambda1 | 1, 1); // try something like (lambda + 1)/2 follows (support of 0-1) beta distribution
+  lprior += gamma_lpdf(theta2 | 2, 0.5); 
+  lprior += beta_lpdf(lambda2 | 1, 1); 
+  lprior += gamma_lpdf(mu | 8, 1);
+  lprior += gamma_lpdf(phi | 2, 0.25);
 }
 
 model {
