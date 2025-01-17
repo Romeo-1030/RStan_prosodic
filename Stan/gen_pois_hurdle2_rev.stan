@@ -79,8 +79,11 @@ model {
       target += log(psi[i]);  // Probability of place = unit_length[i] - 1
     } 
     else {
+      real lpos_last = (theta * pow(theta + lambda * unit_length[i], unit_length[i] - 1) * exp(-theta - lambda * unit_length[i])) / tgamma(unit_length[i] + 1);
+      real lpos_second_last = (theta * pow(theta + lambda * (unit_length[i] - 1), unit_length[i] - 2) * exp(-theta - lambda * (unit_length[i] - 1))) / tgamma(unit_length[i]);
       target += log(1 - psi[i] - alpha[i])
-                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i] - 2);
+                + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i] - 2)
+                - log(1 - lpos_last - lpos_second_last);
     }
 
     target += neg_binomial_2_lpmf(unit_length[i] | mu, phi);  // Negative binomial for unit_length

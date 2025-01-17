@@ -2441,4 +2441,30 @@ result <- output$result
 p33 <- plotting(all_df, result, "it")
 print(p33)
 ```
+## every
+```{r}
+every <- sbc %>%
+  filter(tolower(text) == "every") %>%
+  filter(!is.na(place))
+```
 
+
+```{r}
+rev_every = getModel("every", "Stan/gen_pois_hurdle2_rev.stan", back = F)
+```
+
+```{r}
+every_final = Hurdle_Pois_Quantities_rev(rev_every, every, back = F, hurdle = -2)
+```
+
+```{r}
+output <- df_visual(every_final, every)
+all_df <- output$all_df
+result <- output$result
+```
+
+
+```{r}
+p34 <- plotting(all_df, result, "every")
+print(p34)
+```

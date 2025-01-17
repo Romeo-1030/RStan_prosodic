@@ -60,8 +60,7 @@ model {
       target += log(psi);  // Probability of place = unit_length[i]
     } 
     else {
-      target += log(1 - psi) - 
-      log(theta * pow(theta + lambda * unit_length[i], unit_length[i] - 1) * exp(-theta - lambda * unit_length[i]) / tgamma(unit_length[i] + 1));  // Truncated Generalized Poisson for non-last element
+      target += log(1 - psi) + genpoiss_truncated_lpmf(place[i] | theta, lambda, unit_length[i]);
     }
     target += neg_binomial_2_lpmf(unit_length[i] | mu, phi);  // Negative binomial for unit_length
   }
