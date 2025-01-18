@@ -42,13 +42,13 @@ column_names <- c(
   "alpha_slope_n_eff", "alpha_slope_Rhat", "waic", "waic_scaled"
 )
 
-if (!dir.exists("Figures")) {
-  dir.create("Figures")
+if (!dir.exists("Figures_new")) {
+  dir.create("Figures_new")
 }
 
 error_words <- c()
 
-for (i in sbc_top200[1]) {
+for (i in sbc_top200) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%
@@ -77,7 +77,7 @@ for (i in sbc_top200[1]) {
   waic_gen_sca <- waic_gen / nrow(word)
   plot_gen <- plotting(all_df_gen, result_gen, i)
   
-  word_folder <- file.path("Figures", i)
+  word_folder <- file.path("Figures_new", i)
   if (!dir.exists(word_folder)) {
     dir.create(word_folder, recursive = TRUE)
   }
@@ -113,7 +113,7 @@ for (i in sbc_top200[1]) {
     result_hur <- output_hur$result
     plot_hur <- plotting(all_df_hur, result_hur, i)
     # Ensure subdirectory for the current word exists
-    word_folder <- file.path("Figures", i)
+    word_folder <- file.path("Figures_new", i)
     if (!dir.exists(word_folder)) {
       dir.create(word_folder, recursive = TRUE)
     }
@@ -144,7 +144,7 @@ for (i in sbc_top200[1]) {
     plot_hur <- plotting(all_df_hur, result_hur, i)
     
     # Ensure subdirectory for the current word exists
-    word_folder <- file.path("Figures", i)
+    word_folder <- file.path("Figures_new", i)
     if (!dir.exists(word_folder)) {
       dir.create(word_folder, recursive = TRUE)
     }
@@ -162,4 +162,5 @@ for (i in sbc_top200[1]) {
   colnames(df) <- column_names
   write.csv(df, "results.csv", row.names = FALSE)
 }
-
+colnames(df) <- column_names
+write.csv(df, "out_results.csv", row.names = FALSE)
