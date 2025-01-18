@@ -1,8 +1,84 @@
-# Load summary statistics
+# Load required library
+library(dplyr)
+library(ggplot2)
+
+
 final_results <- read.csv("final_results.csv")
 load("sbc.Rdata")
+
 unique(final_results$word)
-setdiff(sbc_top200, final_results$word)
+cat("error words:", setdiff(sbc_top200, final_results$word))
+
+# # Select the first five columns and the last two columns
+# word_waic <- final_results3[, c(1:5, (ncol(final_results3)-1):ncol(final_results3))]
+# word_waic <- word_waic[nrow(word_waic):1, ]
+# write.csv(word_waic, "word_waic.csv", row.names = FALSE)
+# word_waic <- read.csv("word_waic.csv")
+# filtered_words <- word_waic[
+#   (word_waic$back == TRUE & word_waic$hurdle_place %in% c(0, 1)) |
+#     (word_waic$back == FALSE & word_waic$hurdle_place %in% c(-1, -2)),
+#   "word"
+# ]
+# 
+# unique_filtered_words <- unique(filtered_words)
+# print(unique_filtered_words)
+# rev_word_waic <- word_waic[word_waic$word %in% unique_filtered_words, ]
+# View(rev_word_waic)
+
+Labeled_csv <- read.csv("Lu.csv")
+Labeled_word_waic <- Labeled_csv[, c(1:5, (ncol(Labeled_csv)-2):ncol(Labeled_csv))]
+
+# Filter rows for hur_word: model_type == "hurdle" and keep == "hur" or "hur?"
+hur_word <- Labeled_word_waic$word[Labeled_word_waic$model_type == "hurdle" & 
+                                     Labeled_word_waic$keep %in% c("hur", "hur?")]
+
+# Filter rows for gen_word: model_type == "gen" and keep == "gen" or "gen?"
+gen_word <- Labeled_word_waic$word[Labeled_word_waic$model_type == "hurdle" & 
+                                     Labeled_word_waic$keep %in% c("gen", "gen?")]
+
+# Print results
+print("hur_word:")
+print(hur_word)
+
+print("gen_word:")
+print(gen_word)
+
+# For hur_data: Filter and calculate waic_diff
+hur_data <- Labeled_word_waic[Labeled_word_waic$word %in% hur_word, ]
+waic_diff_hur <- hur_data %>%
+  group_by(word) %>%
+  summarise(
+    waic_diff = waic[model_type == "gen"] - waic[model_type == "hurdle"]
+  )
+
+# For gen_data: Filter and calculate waic_diff
+gen_data <- Labeled_word_waic[Labeled_word_waic$word %in% gen_word, ]
+waic_diff_gen <- gen_data %>%
+  group_by(word) %>%
+  summarise(
+    waic_diff = waic[model_type == "gen"] - waic[model_type == "hurdle"]
+  )
+
+summary(waic_diff_hur$waic_diff)
+summary(waic_diff_gen$waic_diff)
+# Combine data
+waic_diff_combined <- rbind(
+  data.frame(category = "hur", waic_diff = waic_diff_hur$waic_diff),
+  data.frame(category = "gen", waic_diff = waic_diff_gen$waic_diff)
+)
+
+# Create boxplots with restricted y-axis
+ggplot(waic_diff_combined, aes(x = category, y = waic_diff, fill = category)) +
+  geom_boxplot() +  # Add boxplot layer
+  theme_minimal() +  # Apply a clean theme
+  labs(
+    title = "Boxplots of WAIC Differences for Hur and Gen Words",
+    x = "Category",
+    y = "WAIC Difference"
+  ) +
+  ylim(-500, 500) +  # Restrict y-axis range
+  theme(legend.position = "none")  
+
 
 # Load necessary libraries
 library(png)
@@ -14,7 +90,7 @@ library(factoextra)
 # Display both GenPois and Hurdle Methods
 display_images <- function(word) {
   # Construct the path to the subfolder
-  folder_path <- file.path("Figures", word)
+  folder_path <- file.path("Figures_new", word)
   # Get the list of png files in the subfolder
   image_files <- list.files(folder_path, pattern = "\\.png$", full.names = TRUE)
   # Get the base names of the image files for titles
@@ -45,74 +121,153 @@ display_images <- function(word) {
   }
 }
 
-display_images("an")
+display_images("get")
 
 
 ####### Cluster
 
-final_results <- final_results %>%
-  group_by(word) %>%
-  mutate(hurdle_numeric = ifelse(n() > 1, 1, 0)) %>%
-  ungroup()
+# final_results <- final_results %>%
+#   group_by(word) %>%
+#   mutate(hurdle_numeric = ifelse(n() > 1, 1, 0)) %>%
+#   ungroup()
+# 
+# # Step 2: Now filter the data for "gen" model_type and select relevant columns
+# filtered_results <- final_results %>%
+#   filter(model_type == "gen") %>%
+#   select(word, back, theta_mean, mu_mean, phi_mean, lambda_mean, hurdle_place, hurdle_numeric) %>%
+#   mutate(back_numeric = as.numeric(back))
+# 
+# # Normalize the numeric columns
+# numeric_data <- filtered_results[ , c("theta_mean", "mu_mean", "phi_mean", "lambda_mean")]
+# normalized_data <- scale(numeric_data)
+# 
+# # Define weights for each column (adjust these weights based on importance)
+# theta_weight <- 1.0     # Weight for theta_mean
+# mu_weight <- 1.0        # Weight for mu_mean
+# phi_weight <- 1.0       # Weight for phi_mean
+# lambda_weight <- 1.0    # Weight for lambda_mean
+# back_weight <- 3     # Weight for back_numeric
+# hurdle_weight <- 3 # Weight for hurdle_numeric
+# 
+# # Apply weights to each normalized column
+# weighted_data <- data.frame(
+#   theta_mean_weighted = normalized_data[, "theta_mean"] * theta_weight,
+#   mu_mean_weighted = normalized_data[, "mu_mean"] * mu_weight,
+#   phi_mean_weighted = normalized_data[, "phi_mean"] * phi_weight,
+#   lambda_mean_weighted = normalized_data[, "lambda_mean"] * lambda_weight,
+#   back_numeric_weighted = filtered_results$back_numeric * back_weight,
+#   hurdle_numeric_weighted = filtered_results$hurdle_numeric * hurdle_weight
+# )
+# 
+# dist_matrix <- dist(weighted_data, method = "euclidean")
+# hc <- hclust(dist_matrix, method = "complete")
+# 
+# # WSS Elbow Method
+# wss_values <- function(k) {
+#   clusters <- cutree(hc, k = k)
+#   return(fviz_nbclust(weighted_data, FUNcluster = hcut, method = "wss"))
+# }
+# 
+# fviz_nbclust(weighted_data, FUNcluster = hcut, method = "wss", k.max = 20) +
+#   labs(title = "Elbow Method for Optimal Clusters", x = "Number of Clusters", y = "Total Within Sum of Squares")
+# 
+# # Determine the cluster number
+# clusters <- cutree(hc, k = 11)
+# 
+# # View the data with the new cluster assignments and the weights applied
+# filtered_results$cluster_hc <- clusters
+# HC_result <- cbind(filtered_results[ , c("word", "back", "theta_mean", "mu_mean", "phi_mean", "lambda_mean")], 
+#                    cluster_hc = filtered_results$cluster_hc)
+# View(HC_result)
 
-# Step 2: Now filter the data for "gen" model_type and select relevant columns
-filtered_results <- final_results %>%
-  filter(model_type == "gen") %>%
-  select(word, back, theta_mean, mu_mean, phi_mean, lambda_mean, hurdle_place, hurdle_numeric) %>%
-  mutate(back_numeric = as.numeric(back))
+# Filter data into two groups based on `back`
+back_true <- filtered_results %>% filter(back == TRUE)
+back_false <- filtered_results %>% filter(back == FALSE)
 
-# Normalize the numeric columns
-numeric_data <- filtered_results[ , c("theta_mean", "mu_mean", "phi_mean", "lambda_mean")]
-normalized_data <- scale(numeric_data)
+# Step 1: Process the `back == TRUE` group
+# Normalize numeric data
+numeric_data_true <- back_true[, c("theta_mean", "mu_mean", "phi_mean", "lambda_mean")]
+normalized_data_true <- scale(numeric_data_true)
 
-# Define weights for each column (adjust these weights based on importance)
-theta_weight <- 1.0     # Weight for theta_mean
-mu_weight <- 1.0        # Weight for mu_mean
-phi_weight <- 1.0       # Weight for phi_mean
-lambda_weight <- 1.0    # Weight for lambda_mean
-back_weight <- 3     # Weight for back_numeric
-hurdle_weight <- 3 # Weight for hurdle_numeric
-
-# Apply weights to each normalized column
-weighted_data <- data.frame(
-  theta_mean_weighted = normalized_data[, "theta_mean"] * theta_weight,
-  mu_mean_weighted = normalized_data[, "mu_mean"] * mu_weight,
-  phi_mean_weighted = normalized_data[, "phi_mean"] * phi_weight,
-  lambda_mean_weighted = normalized_data[, "lambda_mean"] * lambda_weight,
-  back_numeric_weighted = filtered_results$back_numeric * back_weight,
-  hurdle_numeric_weighted = filtered_results$hurdle_numeric * hurdle_weight
+# Apply weights
+weighted_data_true <- data.frame(
+  theta_mean_weighted = normalized_data_true[, "theta_mean"] * 1.0,
+  mu_mean_weighted = normalized_data_true[, "mu_mean"] * 1.0,
+  phi_mean_weighted = normalized_data_true[, "phi_mean"] * 1.0,
+  lambda_mean_weighted = normalized_data_true[, "lambda_mean"] * 1.0,
+  hurdle_numeric_weighted = back_true$hurdle_numeric * 3
 )
 
-dist_matrix <- dist(weighted_data, method = "euclidean")
-hc <- hclust(dist_matrix, method = "complete")
+# Compute WSS for elbow method
+wss_true <- sapply(1:20, function(k) {
+  kmeans(weighted_data_true, centers = k, nstart = 10)$tot.withinss
+})
 
-# WSS Elbow Method
-wss_values <- function(k) {
-  clusters <- cutree(hc, k = k)
-  return(fviz_nbclust(weighted_data, FUNcluster = hcut, method = "wss"))
-}
+# Plot the WSS for `back == TRUE`
+plot(1:20, wss_true, type = "b", pch = 19, frame = FALSE,
+     xlab = "Number of Clusters (k)",
+     ylab = "Total Within Sum of Squares (WSS)",
+     main = "Elbow Method for Back == TRUE")
 
-fviz_nbclust(weighted_data, FUNcluster = hcut, method = "wss", k.max = 20) +
-  labs(title = "Elbow Method for Optimal Clusters", x = "Number of Clusters", y = "Total Within Sum of Squares")
+# Perform hierarchical clustering
+dist_matrix_true <- dist(weighted_data_true, method = "euclidean")
+hc_true <- hclust(dist_matrix_true, method = "complete")
 
-# Silhouette Method
-silhouette_values <- function(k) {
-  clusters <- cutree(hc, k = k)
-  silhouette_score <- silhouette(clusters, dist_matrix)
-  return(fviz_silhouette(silhouette_score))
-}
+# Choose the optimal number of clusters (adjust based on the WSS plot)
+clusters_true <- cutree(hc_true, k = 5)  # Replace 3 with the optimal number of clusters
 
-fviz_nbclust(weighted_data, FUNcluster = hcut, method = "silhouette", k.max = 20) +
-  labs(title = "Silhouette Method for Optimal Clusters", x = "Number of Clusters", y = "Average Silhouette Width")
+# Add clusters to the original data
+back_true$cluster_hc <- clusters_true
 
-# Determine the cluster number
-clusters <- cutree(hc, k = 11)
+# Step 2: Process the `back == FALSE` group
+# Normalize numeric data
+numeric_data_false <- back_false[, c("theta_mean", "mu_mean", "phi_mean", "lambda_mean")]
+normalized_data_false <- scale(numeric_data_false)
 
-# View the data with the new cluster assignments and the weights applied
-filtered_results$cluster_hc <- clusters
-HC_result <- cbind(filtered_results[ , c("word", "back", "theta_mean", "mu_mean", "phi_mean", "lambda_mean")], 
-                   cluster_hc = filtered_results$cluster_hc)
+# Apply weights
+weighted_data_false <- data.frame(
+  theta_mean_weighted = normalized_data_false[, "theta_mean"] * 1.0,
+  mu_mean_weighted = normalized_data_false[, "mu_mean"] * 1.0,
+  phi_mean_weighted = normalized_data_false[, "phi_mean"] * 1.0,
+  lambda_mean_weighted = normalized_data_false[, "lambda_mean"] * 1.0,
+  hurdle_numeric_weighted = back_false$hurdle_numeric * 3
+)
+
+# Compute WSS for elbow method
+wss_false <- sapply(1:20, function(k) {
+  kmeans(weighted_data_false, centers = k, nstart = 10)$tot.withinss
+})
+
+# Plot the WSS for `back == FALSE`
+plot(1:20, wss_false, type = "b", pch = 19, frame = FALSE,
+     xlab = "Number of Clusters (k)",
+     ylab = "Total Within Sum of Squares (WSS)",
+     main = "Elbow Method for Back == FALSE")
+
+# Perform hierarchical clustering
+dist_matrix_false <- dist(weighted_data_false, method = "euclidean")
+hc_false <- hclust(dist_matrix_false, method = "complete")
+
+# Choose the optimal number of clusters (adjust based on the WSS plot)
+clusters_false <- cutree(hc_false, k = 4)  # Replace 4 with the optimal number of clusters
+
+# Adjust clusters for `back == FALSE` to make them unique
+clusters_false <- clusters_false + max(clusters_true)
+
+# Add clusters to the `back == FALSE` group
+back_false$cluster_hc <- clusters_false
+
+# Step 3: Combine results without overlapping cluster numbers
+final_results_with_clusters <- bind_rows(back_true, back_false)
+
+# Step 4: View final results
+HC_result <- final_results_with_clusters %>%
+  select(word, back, theta_mean, mu_mean, phi_mean, lambda_mean, cluster_hc)
+
 View(HC_result)
+
+
+
 
 library(wordcloud)
 library(RColorBrewer)
