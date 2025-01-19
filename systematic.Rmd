@@ -2468,3 +2468,26 @@ result <- output$result
 p34 <- plotting(all_df, result, "every")
 print(p34)
 ```
+
+## there
+
+```{r}
+there <- sbc %>%
+  filter(tolower(text) == "there") %>%
+  filter(!is.na(place))
+```
+
+
+```{r}
+mix_there = getModel("there", "Stan/mixture_model.stan", back = F)
+```
+
+```{r}
+this_final_mix = Mix_Pois_Quantities(mix_this, this)
+```
+
+```{r}
+output <- df_visual(this_final_mix, this)
+all_df <- output$all_df
+result <- output$result
+```

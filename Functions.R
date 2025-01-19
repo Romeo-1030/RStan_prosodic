@@ -104,6 +104,16 @@ Gen_Pois_Quantities <- function(model, word, back = F){
 }
 
 
+theta<-1.1929
+lambda<-0.7216
+theta<-1.6596
+lambda<-0.2214
+mu<-5.4138
+phi<-7.3624
+psi<-0.3707
+unit_length <- 4
+max_length <- 15
+
 ### CDF for Mixture Model
 trun_mix <- function(theta, lambda, unit_length, max_length) {
   prob_list <- c()
