@@ -2483,11 +2483,17 @@ mix_there = getModel("there", "Stan/mixture_model.stan", back = F)
 ```
 
 ```{r}
-this_final_mix = Mix_Pois_Quantities(mix_this, this)
+there_final_mix = Mix_Pois_Quantities(mix_there, there)
 ```
 
 ```{r}
-output <- df_visual(this_final_mix, this)
+output <- df_visual(there_final_mix, there)
 all_df <- output$all_df
 result <- output$result
+```
+
+
+```{r}
+p35 <- plotting(all_df, result, "there")
+print(p35)
 ```
