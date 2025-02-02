@@ -1,7 +1,8 @@
 # Load required library
 library(dplyr)
 library(ggplot2)
-
+library(wordcloud)
+library(RColorBrewer)
 
 final_results <- read.csv("final_results.csv")
 load("sbc.Rdata")
@@ -36,6 +37,10 @@ hur_word <- Labeled_word_waic$word[Labeled_word_waic$model_type == "hurdle" &
 gen_word <- Labeled_word_waic$word[Labeled_word_waic$model_type == "hurdle" & 
                                      Labeled_word_waic$keep %in% c("gen", "gen?")]
 
+word_counts <- table(Labeled_word_waic$word)
+unique_words <- names(word_counts)[word_counts == 1]
+ori_gen_word <- unique_words[unique_words %in% Labeled_word_waic$word[Labeled_word_waic$model_type == "gen"]]
+
 # Print results
 print("hur_word:")
 print(hur_word)
@@ -61,6 +66,7 @@ waic_diff_gen <- gen_data %>%
 
 summary(waic_diff_hur$waic_diff)
 summary(waic_diff_gen$waic_diff)
+
 # Combine data
 waic_diff_combined <- rbind(
   data.frame(category = "hur", waic_diff = waic_diff_hur$waic_diff),
@@ -78,6 +84,199 @@ ggplot(waic_diff_combined, aes(x = category, y = waic_diff, fill = category)) +
   ) +
   ylim(-500, 500) +  # Restrict y-axis range
   theme(legend.position = "none")  
+
+############################ waic scaled
+# For hur_data: Filter and calculate waic_diff
+hur_data <- Labeled_word_waic[Labeled_word_waic$word %in% hur_word, ]
+waic_diff_hur <- hur_data %>%
+  group_by(word) %>%
+  summarise(
+    waic_diff = waic_scaled[model_type == "gen"] - waic_scaled[model_type == "hurdle"]
+  )
+
+# For gen_data: Filter and calculate waic_diff
+gen_data <- Labeled_word_waic[Labeled_word_waic$word %in% gen_word, ]
+waic_diff_gen <- gen_data %>%
+  group_by(word) %>%
+  summarise(
+    waic_diff = waic_scaled[model_type == "gen"] - waic_scaled[model_type == "hurdle"]
+  )
+
+# Summarize the results
+summary(waic_diff_hur$waic_diff)
+summary(waic_diff_gen$waic_diff)
+
+# Combine data
+waic_diff_combined <- rbind(
+  data.frame(category = "hur", waic_diff = waic_diff_hur$waic_diff),
+  data.frame(category = "gen", waic_diff = waic_diff_gen$waic_diff)
+)
+
+# Create boxplots with restricted y-axis
+ggplot(waic_diff_combined, aes(x = category, y = waic_diff, fill = category)) +
+  geom_boxplot() +  # Add boxplot layer
+  theme_minimal() +  # Apply a clean theme
+  labs(
+    title = "Boxplots of WAIC Differences for Hur and Gen Words",
+    x = "Category",
+    y = "WAIC Scaled Difference"
+  ) +  # Restrict y-axis range
+  theme(legend.position = "none")
+
+
+####################### cluster
+
+# Filter `Labeled_word_waic` into hur_word and gen_word groups
+# manual_hur_data <- Labeled_csv %>% filter(word %in% hur_word)
+# manual_gen_data <- Labeled_csv %>% filter(word %in% c(gen_word, ori_gen_word))
+
+word_counts <- table(Labeled_csv$word)
+non_unique_words <- names(word_counts)[word_counts == 2]
+ori_hur_word <- non_unique_words[non_unique_words %in% Labeled_csv$word[Labeled_csv$model_type == "hurdle"]]
+
+hur_data <- Labeled_csv[Labeled_csv$word %in% ori_hur_word, ]
+waic_diff_data <- hur_data %>%
+  group_by(word) %>%
+  summarise(
+    waic_diff = waic_scaled[model_type == "gen"] - waic_scaled[model_type == "hurdle"]
+  )
+
+Labeled_csv_with_diff <- Labeled_csv %>%
+  left_join(waic_diff_data, by = "word")
+
+# Define hur_data (waic_diff >= 0)
+hur_data <- Labeled_csv_with_diff %>% filter(waic_diff >= 0, model_type == "hurdle")
+gen_data <- Labeled_csv_with_diff %>% filter(waic_diff < 0, model_type == "gen")
+ori_gen_data <- Labeled_csv_with_diff %>% filter(is.na(waic_diff))
+
+# Define gen_data as all remaining data (excluding hur_data)
+gen_data <- rbind(gen_data, ori_gen_data)
+
+# Split hur_data into two groups based on `back`
+hur_back_true <- hur_data %>% filter(back == TRUE)
+hur_back_false <- hur_data %>% filter(back == FALSE)
+
+# Split gen_data into two groups based on `back`
+gen_back_true <- gen_data %>% filter(back == TRUE)
+gen_back_false <- gen_data %>% filter(back == FALSE)
+
+process_group <- function(data, model_type = "gen", k_optimal) {
+  if (model_type == "gen"){
+    # Normalize numeric data
+    numeric_data <- data[, c("theta_mean", "lambda_mean", "mu_mean", "phi_mean")]
+    normalized_data <- scale(numeric_data)
+    
+    # Apply weights
+    weighted_data <- data.frame(
+      theta_mean_weighted = normalized_data[, "theta_mean"] * 1.0,
+      mu_mean_weighted = normalized_data[, "mu_mean"] * 1.0,
+      phi_mean_weighted = normalized_data[, "phi_mean"] * 1.0,
+      lambda_mean_weighted = normalized_data[, "lambda_mean"] * 1.0
+    )
+  } else {
+    # Normalize numeric data
+    numeric_data <- data[, c("theta_mean", "mu_mean", "phi_mean", "lambda_mean", "psi_intercept_mean",
+                             "psi_slope_mean")]
+    normalized_data <- scale(numeric_data)
+    
+    # Apply weights
+    weighted_data <- data.frame(
+      theta_mean_weighted = normalized_data[, "theta_mean"] * 1.0,
+      mu_mean_weighted = normalized_data[, "mu_mean"] * 1.0,
+      phi_mean_weighted = normalized_data[, "phi_mean"] * 1.0,
+      lambda_mean_weighted = normalized_data[, "lambda_mean"] * 1.0,
+      psi_intercept_mean_weighted = normalized_data[, "psi_intercept_mean"] * 1.0,
+      psi_slope_mean_weighted = normalized_data[, "psi_slope_mean"] * 1.0
+    )
+  }
+  # Compute WSS for the elbow method
+  wss <- sapply(1:20, function(k) {
+    kmeans(weighted_data, centers = k, nstart = 10)$tot.withinss
+  })
+  
+  # Plot the WSS for the group
+  plot(1:20, wss, type = "b", pch = 19, frame = FALSE,
+       xlab = "Number of Clusters (k)",
+       ylab = "Total Within Sum of Squares (WSS)",
+       main = paste("Elbow Method"))
+  
+  # Perform hierarchical clustering
+  dist_matrix <- dist(weighted_data, method = "euclidean")
+  hc <- hclust(dist_matrix, method = "complete")
+  
+  # Choose the optimal number of clusters 
+  clusters <- cutree(hc, k = k_optimal)
+  
+  # Add clusters to the original data
+  data$cluster_hc <- clusters
+  
+  # Return the updated data
+  return(data)
+}
+
+# Process the gen, back == TRUE group
+gen_back_true_processed <- process_group(gen_back_true, "gen", k_optimal = 3)
+
+# Process the gen, back == FALSE group
+gen_back_false_processed <- process_group(gen_back_false, "gen", k_optimal = 3)
+
+# Process the back == TRUE group
+hur_back_true_processed <- process_group(hur_back_true, "hur", k_optimal = 3)
+
+# Process the back == FALSE group
+hur_back_false_processed <- process_group(hur_back_false, "hur", k_optimal = 3)
+
+
+# Adjust clusters for gen, back == FALSE to avoid overlaps
+gen_back_false_processed$cluster_hc <- gen_back_false_processed$cluster_hc + max(gen_back_true_processed$cluster_hc)
+
+# Adjust clusters for hur, back == TRUE to avoid overlaps with gen clusters
+hur_back_true_processed$cluster_hc <- hur_back_true_processed$cluster_hc + max(gen_back_false_processed$cluster_hc)
+
+# Adjust clusters for hur, back == FALSE to avoid overlaps with previous groups
+hur_back_false_processed$cluster_hc <- hur_back_false_processed$cluster_hc + max(hur_back_true_processed$cluster_hc)
+
+# Combine the results
+gen_results_with_clusters <- bind_rows(gen_back_true_processed, gen_back_false_processed)
+hur_results_with_clusters <- bind_rows(hur_back_true_processed, hur_back_false_processed)
+
+# Combine gen and hur results to get all clusters
+all_results_with_clusters <- bind_rows(gen_results_with_clusters, hur_results_with_clusters)
+
+
+# Select relevant columns for the final result
+HC_result_gen <- all_results_with_clusters %>%
+  select(word, back, theta_mean, mu_mean, phi_mean, lambda_mean, cluster_hc)
+
+# View the final results
+View(HC_result_gen)
+
+# For example, here we use a 2x3 layout (2 rows and 3 columns)
+par(mfrow = c(3, 4))  # Adjust depending on the number of clusters
+
+# Ensure word frequency for each cluster
+unique_clusters <- unique(HC_result_gen$cluster_hc)
+
+for (cluster in unique_clusters) {
+  # Subset words for the current cluster
+  cluster_words <- HC_result_gen$word[HC_result_gen$cluster_hc == cluster]
+  
+  # Generate frequency table for the current cluster
+  word_freq <- table(cluster_words)
+  
+  # Generate word cloud for the current cluster
+  wordcloud(
+    words = names(word_freq),    # Words to visualize
+    freq = as.numeric(word_freq), # Frequency of the words
+    min.freq = 1,                 # Minimum frequency to include a word
+    scale = c(0.8, 0.5),            # Scale for word sizes
+    random.order = FALSE,         # Arrange words randomly or not
+    rot.per = 0                  # No rotation of words
+  )
+}
+
+# Reset the plotting layout to default (single plot)
+par(mfrow = c(1, 1))
 
 
 # Load necessary libraries
@@ -179,6 +378,8 @@ display_images("get")
 # HC_result <- cbind(filtered_results[ , c("word", "back", "theta_mean", "mu_mean", "phi_mean", "lambda_mean")], 
 #                    cluster_hc = filtered_results$cluster_hc)
 # View(HC_result)
+
+
 
 # Filter data into two groups based on `back`
 back_true <- filtered_results %>% filter(back == TRUE)
