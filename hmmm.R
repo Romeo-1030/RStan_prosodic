@@ -47,29 +47,29 @@ column_names <- c(
   "alpha_slope_n_eff", "alpha_slope_Rhat", "waic", "waic_scaled"
 )
 
-if (!dir.exists("Figures_new")) {
-  dir.create("Figures_new")
+if (!dir.exists("Figures_rev_new")) {
+  dir.create("Figures_rev_new")
 }
 
 error_words <- c()
 
 # hii could you help with this please TAT
-back_reverse <- c()
-back_reverse_hurdle_place <- c()
-front_reverse <- c()
-front_reverse_hurdle_place <- c()
+back_reverse <- c("before", "get", "long", "now", "or", "there")
+back_reverse_hurdle_place <- c(0, 0, 1, 0, 0, 0)
+front_reverse <- c("every", "it", "mom", "pretty", "tell", "very")
+front_reverse_hurdle_place <- c(-2, -1, -1, -2, -2, -2)
 
-for (i in back_reverse) {
+for (i in back_reverse[1]) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%
     filter(!is.na(place))
+  index <- which(back_reverse == i)
+  hurdle_place <- back_reverse_hurdle_place[index]
   
-  hurdle_place <- back_reverse_hurdle_place[i]
-  
-  if (hurdle_place == '-1') {
+  if (hurdle_place == '0') {
     hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev.stan", back = F)
-    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, 0)
+    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -1)
     # If word_final_hur is NULL, skip to the next word
     if (is.null(word_final_hur)) next
     waic_hur <- get_waic(hurdle_model)
@@ -79,7 +79,7 @@ for (i in back_reverse) {
     result_hur <- output_hur$result
     plot_hur <- plotting(all_df_hur, result_hur, i)
     # Ensure subdirectory for the current word exists
-    word_folder <- file.path("Figures_new", i)
+    word_folder <- file.path("Figures_rev_new", i)
     if (!dir.exists(word_folder)) {
       dir.create(word_folder, recursive = TRUE)
     }
@@ -91,10 +91,10 @@ for (i in back_reverse) {
     save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, rep(NA, 20), waic_hur, waic_hur_sca)
     df_back_reverse <- rbind(df_back_reverse, save_hur)
     
-  } else if (hurdle_place == '-2') {
-      hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev2.stan", back = F)
-      word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, 1)
-    }
+  } else if (hurdle_place == '1') {
+    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev2.stan", back = F)
+    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -2)
+
     # If word_final_hur is NULL, skip to the next word
     if (is.null(word_final_hur)) next
     
@@ -106,7 +106,7 @@ for (i in back_reverse) {
     plot_hur <- plotting(all_df_hur, result_hur, i)
     
     # Ensure subdirectory for the current word exists
-    word_folder <- file.path("Figures_new", i)
+    word_folder <- file.path("Figures_rev_new", i)
     if (!dir.exists(word_folder)) {
       dir.create(word_folder, recursive = TRUE)
     }
@@ -133,12 +133,12 @@ for (i in front_reverse) {
   word <- sbc %>%
     filter(tolower(text) == i) %>%
     filter(!is.na(place))
+  index <- which(back_reverse == i)
+  hurdle_place <- front_reverse_hurdle_place[index]
   
-  hurdle_place <- front_reverse_hurdle_place[i]
-  
-  if (hurdle_place == '0') {
+  if (hurdle_place == '-1') {
     hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev.stan", back = T)
-    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -1)
+    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, 0)
     # If word_final_hur is NULL, skip to the next word
     if (is.null(word_final_hur)) next
     waic_hur <- get_waic(hurdle_model)
@@ -148,7 +148,7 @@ for (i in front_reverse) {
     result_hur <- output_hur$result
     plot_hur <- plotting(all_df_hur, result_hur, i)
     # Ensure subdirectory for the current word exists
-    word_folder <- file.path("Figures_new", i)
+    word_folder <- file.path("Figures_rev_new", i)
     if (!dir.exists(word_folder)) {
       dir.create(word_folder, recursive = TRUE)
     }
@@ -158,12 +158,11 @@ for (i in front_reverse) {
     selected_rows_hur <- sum_hur[1:6, ]
     flattened_row_hur <- as.vector(t(selected_rows_hur))
     save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, rep(NA, 20), waic_hur, waic_hur_sca)
-    df_back_reverse <- rbind(df_back_reverse, save_hur)
+    df_front_reverse <- rbind(df_front_reverse, save_hur)
     
-  } else if (hurdle_place == '-2') {
-    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev2.stan", back = T)
-    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, 1)
-  }
+  } else if (hurdle_place == '1') {
+  hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev2.stan", back = T)
+  word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -2)
   # If word_final_hur is NULL, skip to the next word
   if (is.null(word_final_hur)) next
   
@@ -175,7 +174,7 @@ for (i in front_reverse) {
   plot_hur <- plotting(all_df_hur, result_hur, i)
   
   # Ensure subdirectory for the current word exists
-  word_folder <- file.path("Figures_new", i)
+  word_folder <- file.path("Figures_rev_new", i)
   if (!dir.exists(word_folder)) {
     dir.create(word_folder, recursive = TRUE)
   }
