@@ -59,7 +59,7 @@ back_reverse_hurdle_place <- c(0, 0, 1, 0, 0, 0)
 front_reverse <- c("every", "it", "mom", "pretty", "tell", "very")
 front_reverse_hurdle_place <- c(-2, -1, -1, -2, -2, -2)
 
-for (i in back_reverse[1]) {
+for (i in back_reverse) {
   # i is a string
   word <- sbc %>%
     filter(tolower(text) == i) %>%
@@ -68,7 +68,8 @@ for (i in back_reverse[1]) {
   hurdle_place <- back_reverse_hurdle_place[index]
   
   if (hurdle_place == '0') {
-    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev.stan", back = F)
+    cri <- F
+    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev.stan", back = cri)
     word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -1)
     # If word_final_hur is NULL, skip to the next word
     if (is.null(word_final_hur)) next
@@ -92,7 +93,8 @@ for (i in back_reverse[1]) {
     df_back_reverse <- rbind(df_back_reverse, save_hur)
     
   } else if (hurdle_place == '1') {
-    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev2.stan", back = F)
+    cri <- F
+    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle2_rev.stan", back = cri)
     word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -2)
 
     # If word_final_hur is NULL, skip to the next word
@@ -133,12 +135,13 @@ for (i in front_reverse) {
   word <- sbc %>%
     filter(tolower(text) == i) %>%
     filter(!is.na(place))
-  index <- which(back_reverse == i)
+  index <- which(front_reverse == i)
   hurdle_place <- front_reverse_hurdle_place[index]
   
   if (hurdle_place == '-1') {
-    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev.stan", back = T)
-    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, 0)
+    cri <- T
+    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev.stan", back = cri)
+    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -1)
     # If word_final_hur is NULL, skip to the next word
     if (is.null(word_final_hur)) next
     waic_hur <- get_waic(hurdle_model)
@@ -160,35 +163,36 @@ for (i in front_reverse) {
     save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, rep(NA, 20), waic_hur, waic_hur_sca)
     df_front_reverse <- rbind(df_front_reverse, save_hur)
     
-  } else if (hurdle_place == '1') {
-  hurdle_model <- getModel(i, "Stan/gen_pois_hurdle_rev2.stan", back = T)
-  word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -2)
-  # If word_final_hur is NULL, skip to the next word
-  if (is.null(word_final_hur)) next
-  
-  waic_hur <- get_waic(hurdle_model)
-  waic_hur_sca <- waic_hur / nrow(word)
-  output_hur <- df_visual(word_final_hur, word)
-  all_df_hur <- output_hur$all_df
-  result_hur <- output_hur$result
-  plot_hur <- plotting(all_df_hur, result_hur, i)
-  
-  # Ensure subdirectory for the current word exists
-  word_folder <- file.path("Figures_rev_new", i)
-  if (!dir.exists(word_folder)) {
-    dir.create(word_folder, recursive = TRUE)
+  } else if (hurdle_place == '-2') {
+    cri <- T
+    hurdle_model <- getModel(i, "Stan/gen_pois_hurdle2_rev.stan", back = cri)
+    word_final_hur <- process_word_hurdle(word, hurdle_model, cri, i, error_words, Hurdle_Pois_Quantities_rev, -2)
+    # If word_final_hur is NULL, skip to the next word
+    if (is.null(word_final_hur)) next
+    
+    waic_hur <- get_waic(hurdle_model)
+    waic_hur_sca <- waic_hur / nrow(word)
+    output_hur <- df_visual(word_final_hur, word)
+    all_df_hur <- output_hur$all_df
+    result_hur <- output_hur$result
+    plot_hur <- plotting(all_df_hur, result_hur, i)
+    
+    # Ensure subdirectory for the current word exists
+    word_folder <- file.path("Figures_rev_new", i)
+    if (!dir.exists(word_folder)) {
+      dir.create(word_folder, recursive = TRUE)
+    }
+    
+    # Save the plots
+    ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
+    
+    sum_hur <- summary(hurdle_model)$summary
+    selected_rows_hur <- sum_hur[1:8, ]
+    flattened_row_hur <- as.vector(t(selected_rows_hur))
+    
+    save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, waic_hur, waic_hur_sca)
+    df_front_reverse <- rbind(df_front_reverse, save_hur)
   }
-  
-  # Save the plots
-  ggsave(filename = file.path(word_folder, paste0(i, "_hur.png")), plot = plot_hur)
-  
-  sum_hur <- summary(hurdle_model)$summary
-  selected_rows_hur <- sum_hur[1:8, ]
-  flattened_row_hur <- as.vector(t(selected_rows_hur))
-  
-  save_hur <- c(i, 'hurdle', cri, hurdle_place, flattened_row_hur, waic_hur, waic_hur_sca)
-  df_front_reverse <- rbind(df_front_reverse, save_hur)
-}
 colnames(df_front_reverse) <- column_names
 write.csv(df_front_reverse, "front_reverse.csv", row.names = FALSE)
 }
