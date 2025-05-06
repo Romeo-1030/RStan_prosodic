@@ -610,8 +610,8 @@ plot_mapper_colored(mapper_result, posterior_param_simple, "waic_scaled")
 
 ###################### Convert Python graph to R code ######################
 
-install.packages("jsonlite")   
-install.packages("igraph")  
+# install.packages("jsonlite")   
+# install.packages("igraph")  
 library(jsonlite)
 library(igraph)
 
@@ -641,3 +641,55 @@ plot_mapper_colored <- function(mapper_result, posterior_param_simple, param_nam
 }
 
 plot_mapper_colored(mapper_result, posterior_param_simple, "mu_mean")
+
+# plot with transparency
+plot_mapper_colored_alpha <- function(mapper_result, posterior_param_simple,
+                                      color_param = "mu_mean",
+                                      alpha_param = "back",
+                                      main_title = NULL) {
+  library(igraph)
+  g_mapper <- graph.adjacency(mapper_result$adjacency, mode = "undirected")
+  
+  color_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
+    mean(posterior_param_simple[[color_param]][idxs], na.rm = TRUE)
+  })
+  
+  alpha_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
+    if (is.logical(posterior_param_simple[[alpha_param]])) {
+      mean(as.numeric(posterior_param_simple[[alpha_param]][idxs]), na.rm = TRUE)
+    } else {
+      mean(posterior_param_simple[[alpha_param]][idxs], na.rm = TRUE)
+    }
+  })
+  
+  val_scaled <- scales::rescale(color_values, to = c(0, 1))
+  alpha_scaled <- scales::rescale(alpha_values, to = c(0.2, 1))  
+  
+  base_colors <- colorRampPalette(c("blue", "white", "red"))(100)
+  color_indices <- round(val_scaled * 99 + 1)
+  
+  vertex_colors <- mapply(function(i, alpha) {
+    rgb_val <- col2rgb(base_colors[i]) / 255
+    rgb(rgb_val[1], rgb_val[2], rgb_val[3], alpha = alpha)
+  }, i = color_indices, alpha = alpha_scaled)
+  
+  V(g_mapper)$val <- color_values
+  V(g_mapper)$alpha <- alpha_values
+  
+  set.seed(1234) # Change this
+  layout_fixed <- layout_with_fr(g_mapper)
+  plot(g_mapper,
+       vertex.size = sqrt(sapply(mapper_result$points_in_vertex, length)) * 2,
+       vertex.label = NA,
+       vertex.color = vertex_colors,
+       layout = layout_with_fr,
+       main = ifelse(is.null(main_title),
+                     paste0("Colored by ", color_param, ", alpha by ", alpha_param),
+                     main_title))
+  
+  legend("topright", legend = c("Low", "Mid", "High"),
+         fill = base_colors[c(1, 50, 100)],
+         title = color_param, cex = 0.8)
+}
+plot_mapper_colored_alpha(mapper_result, posterior_param_simple,
+                          color_param = "mu_mean", alpha_param = "back")
