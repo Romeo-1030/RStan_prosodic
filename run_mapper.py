@@ -73,12 +73,14 @@ def print_nodes(export_data, column_names):
         print(f"  Words: {words}")
 
 # === Save result to a specific directory ===
-def save_result(export_data, seed, out_dir):
-    os.makedirs(out_dir, exist_ok=True)  # Create directory if it doesn't exist
-    output_file = os.path.join(out_dir, f"mapper_result_seed{seed}.json")
+def save_result(export_data, seed, n_intervals, overlap, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    filename = f"mapper_result_seed{seed}_int{n_intervals}_ov{overlap}.json"
+    output_file = os.path.join(out_dir, filename)
     with open(output_file, "w") as f:
         json.dump(export_data, f)
     print(f"\nSaved mapper result to: {output_file}")
+
 
 # === Run everything ===
 def run(seed, n_intervals, overlap, out_dir):
@@ -92,7 +94,7 @@ def run(seed, n_intervals, overlap, out_dir):
     export_data = process_mapper_graph(mapper_graph)
 
     print_nodes(export_data, column_names)
-    save_result(export_data, seed, out_dir)
+    save_result(export_data, seed, n_intervals, overlap, out_dir)
 
 # === Entry Point ===
 if __name__ == "__main__":

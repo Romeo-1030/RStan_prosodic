@@ -610,86 +610,60 @@ plot_mapper_colored(mapper_result, posterior_param_simple, "waic_scaled")
 
 ###################### Convert Python graph to R code ######################
 
-# install.packages("jsonlite")   
-# install.packages("igraph")  
 library(jsonlite)
+
+mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed42_int4_ov0.3.json")
+
 library(igraph)
+library(ggnetwork)
+library(ggplot2)
+library(scales)
 
-mapper_result <- jsonlite::fromJSON("mapper_result.json")
+plot_mapper_colored_gg <- function(mapper_result, 
+                                   posterior_param_simple, 
+                                   color_param, 
+                                   alpha_param = NULL, 
+                                   main_title = NULL) {
 
-plot_mapper_colored <- function(mapper_result, posterior_param_simple, param_name, main_title = NULL) {
   g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
-  values <- sapply(mapper_result$points_in_vertex, function(idxs) {
-    mean(posterior_param_simple[[param_name]][idxs], na.rm = TRUE)
-  })
-  V(g_mapper)$val <- values
-  color_scale <- colorRampPalette(c("blue", "white", "red"))(100)
-  val_scaled <- scales::rescale(V(g_mapper)$val, to = c(1, 100))
-  vertex_colors <- color_scale[round(val_scaled)]
-  set.seed(1234)  # 
-  layout_fixed <- layout_with_fr(g_mapper)
-  plot(g_mapper,
-       vertex.size = sqrt(sapply(mapper_result$points_in_vertex, length)) * 2,
-       vertex.label = NA,
-       vertex.color = vertex_colors,
-       layout = layout_with_fr,
-       main = ifelse(is.null(main_title), paste0("Colored by ", param_name), main_title))
-  legend("topright", legend = c("Low", "Mid", "High"),
-         fill = color_scale[c(1, 50, 100)],
-         title = param_name,
-         cex = 0.8)
-}
-
-plot_mapper_colored(mapper_result, posterior_param_simple, "mu_mean")
-
-# plot with transparency
-plot_mapper_colored_alpha <- function(mapper_result, posterior_param_simple,
-                                      color_param = "mu_mean",
-                                      alpha_param = "back",
-                                      main_title = NULL) {
-  library(igraph)
-  g_mapper <- graph.adjacency(mapper_result$adjacency, mode = "undirected")
   
+  # mean of each node
   color_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
     mean(posterior_param_simple[[color_param]][idxs], na.rm = TRUE)
   })
+  V(g_mapper)$color_val <- color_values
   
-  alpha_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
-    if (is.logical(posterior_param_simple[[alpha_param]])) {
-      mean(as.numeric(posterior_param_simple[[alpha_param]][idxs]), na.rm = TRUE)
-    } else {
+  if (!is.null(alpha_param)) {
+    alpha_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
       mean(posterior_param_simple[[alpha_param]][idxs], na.rm = TRUE)
-    }
-  })
+    })
+    V(g_mapper)$alpha_val <- alpha_values
+  } else {
+    V(g_mapper)$alpha_val <- 1
+  }
   
-  val_scaled <- scales::rescale(color_values, to = c(0, 1))
-  alpha_scaled <- scales::rescale(alpha_values, to = c(0.2, 1))  
+  # show how many words in each vertex
+  V(g_mapper)$size <- sapply(mapper_result$points_in_vertex, length)
   
-  base_colors <- colorRampPalette(c("blue", "white", "red"))(100)
-  color_indices <- round(val_scaled * 99 + 1)
+  set.seed(1234)
+  layout_fr <- layout_with_fr(g_mapper)
+  net_data <- ggnetwork(g_mapper, layout = layout_fr)
   
-  vertex_colors <- mapply(function(i, alpha) {
-    rgb_val <- col2rgb(base_colors[i]) / 255
-    rgb(rgb_val[1], rgb_val[2], rgb_val[3], alpha = alpha)
-  }, i = color_indices, alpha = alpha_scaled)
+  p <- ggplot(net_data, aes(x = x, y = y, xend = xend, yend = yend)) +
+    geom_edges(color = "grey70") +
+    geom_nodes(aes(color = color_val, alpha = alpha_val, size = size)) +
+    scale_color_gradientn(colors = c("blue", "purple", "red"), name = color_param)+
+    scale_alpha_continuous(range = c(0.2, 1), name = alpha_param) +
+    guides(size = guide_legend(title = "Words per node")) +
+    theme_void() +
+    labs(title = ifelse(is.null(main_title), paste("Color:", color_param, 
+                                                   if (!is.null(alpha_param)) paste("/ Alpha:", alpha_param) else ""), 
+                        main_title))
   
-  V(g_mapper)$val <- color_values
-  V(g_mapper)$alpha <- alpha_values
-  
-  set.seed(1234) # Change this
-  layout_fixed <- layout_with_fr(g_mapper)
-  plot(g_mapper,
-       vertex.size = sqrt(sapply(mapper_result$points_in_vertex, length)) * 2,
-       vertex.label = NA,
-       vertex.color = vertex_colors,
-       layout = layout_with_fr,
-       main = ifelse(is.null(main_title),
-                     paste0("Colored by ", color_param, ", alpha by ", alpha_param),
-                     main_title))
-  
-  legend("topright", legend = c("Low", "Mid", "High"),
-         fill = base_colors[c(1, 50, 100)],
-         title = color_param, cex = 0.8)
+  print(p)
 }
-plot_mapper_colored_alpha(mapper_result, posterior_param_simple,
-                          color_param = "mu_mean", alpha_param = "back")
+plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "mu_mean", alpha_param = "back")
+
+plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "mu_mean")
+
+plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back")
