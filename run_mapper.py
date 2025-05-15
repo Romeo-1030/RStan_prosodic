@@ -75,7 +75,7 @@ def print_nodes(export_data, column_names):
 # === Save result to a specific directory ===
 def save_result(export_data, seed, n_intervals, overlap, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    filename = f"mapper_result_seed{seed}_int{n_intervals}_ov{overlap}.json"
+    filename = f"mapper_result_seed{seed}_int{n_intervals}_ov{str(overlap).replace('.', '_')}.json"
     output_file = os.path.join(out_dir, filename)
     with open(output_file, "w") as f:
         json.dump(export_data, f)

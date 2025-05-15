@@ -47,7 +47,7 @@ for (i in 1:nrow(posterior_param)) {
   }
 }
 
-# Step 1: Select the better rev ones (smaller WAIC)
+# Select the better rev ones (smaller WAIC)
 all_rev_rev <- rbind(new_back_reverse, new_front_reverse)
 
 for (i in 1:nrow(posterior_param)) {
@@ -72,7 +72,7 @@ for (i in 1:nrow(posterior_param)) {
   }
 }
 
-# Step 2: Remove duplicate words based on waic_scaled
+# Remove duplicate words based on waic_scaled
 # Find words that appear twice
 duplicated_words <- posterior_param$word[duplicated(posterior_param$word)]
 
@@ -102,6 +102,8 @@ print(length(unique(posterior_param$word)))
 posterior_param_simple <- posterior_param[, c("word", "model_type", "back", "hurdle_place", 
                                               "mu_mean", "phi_mean", "theta_mean", "lambda_mean", "psi_intercept_mean", "psi_slope_mean", 
                                               "alpha_intercept_mean", "alpha_slope_mean", "waic", "waic_scaled")]
+
+#write.csv(posterior_param_simple, file = "posterior_param_simple.csv", row.names = FALSE)
 
 # Function to return truncated hurdle-modified GenPoisson PMF
 get_truncated_pmf <- function(theta, lambda, psi_intercept, psi_slope,
@@ -385,7 +387,7 @@ compute_joint_pdf <- function(row, max_length = 24, max_place = 24) {
 
 
 row <- posterior_param_simple[posterior_param_simple$word == "before", ]
-print(row)
+#print(row)
 pdf <- compute_joint_pdf(row)
 
 colormap <- colorRampPalette(c("white", heat.colors(99)))(100)
@@ -531,88 +533,59 @@ plotly::plot_ly(mds_df,
 
 ###################### mapper ######################
 
-#library(TDAmapper)
-#install.packages("fastcluster")
-#install.packages("igraph")
-#install.packages("devtools")
-library(devtools)
-#devtools::install_github("paultpearson/TDAmapper")
-library(TDAmapper)
-library(fastcluster)
-library(igraph)
-# Run Mapper
-
-#filter_values <- list(mds_coords_k3[, 1], mds_coords_k3[, 2], mds_coords_k3[, 3], mds_coords_k3[, 4], mds_coords_k3[, 5])
-
-filter_values <- list(mds_coords_k3[, 1], mds_coords_k3[, 2])
-
-mapper_result <- mapper(
-  #distance_matrix = as.matrix(dist_object),   # use your js_distance_matrix
-  as.matrix(dist_object),
-  filter_values = filter_values,             # first two MDS components
-  num_intervals = c(5, 5),                 # adjust based on resolution
-  percent_overlap = 50,                      # how much overlap in filters
-  num_bins_when_clustering = 20              # clusters per bin
-)
-g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
-
-# Add size attribute (how many data points in each node)
-V(g_mapper)$size <- sapply(mapper_result$points_in_vertex, length)
-
-# Quick plot with node sizes proportional to number of points
-plot(g_mapper, 
-     vertex.size = sqrt(V(g_mapper)$size) * 2,
-     vertex.label = NA,
-     layout = layout_with_fr,
-     main = "Mapper Graph from PDF Matrix")
-
-
-word_list <- posterior_param_simple$word
-
-# Get the words associated with each node
-words_per_node <- lapply(mapper_result$points_in_vertex, function(indices) {
-  word_list[indices]
-})
-
-# Give names to each node
-names(words_per_node) <- paste0("Node_", seq_along(words_per_node))
-
-# View words for each node
-print(words_per_node)
-
-plot_mapper_colored <- function(mapper_result, posterior_param_simple, param_name, main_title = NULL) {
-  g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
-  values <- sapply(mapper_result$points_in_vertex, function(idxs) {
-    mean(posterior_param_simple[[param_name]][idxs], na.rm = TRUE)
-  })
-  V(g_mapper)$val <- values
-  color_scale <- colorRampPalette(c("blue", "white", "red"))(100)
-  val_scaled <- scales::rescale(V(g_mapper)$val, to = c(1, 100))
-  vertex_colors <- color_scale[round(val_scaled)]
-  plot(g_mapper,
-       vertex.size = sqrt(sapply(mapper_result$points_in_vertex, length)) * 2,
-       vertex.label = NA,
-       vertex.color = vertex_colors,
-       layout = layout_with_fr,
-       main = ifelse(is.null(main_title), paste0("Colored by ", param_name), main_title))
-  legend("topright", legend = c("Low", "Mid", "High"),
-         fill = color_scale[c(1, 50, 100)],
-         title = param_name,
-         cex = 0.8)
-}
-
-###################### Visualization ######################
-
-plot_mapper_colored(mapper_result, posterior_param_simple, "mu_mean")
-plot_mapper_colored(mapper_result, posterior_param_simple, "theta_mean")
-plot_mapper_colored(mapper_result, posterior_param_simple, "waic_scaled")
+# #library(TDAmapper)
+# #install.packages("fastcluster")
+# #install.packages("igraph")
+# #install.packages("devtools")
+# library(devtools)
+# #devtools::install_github("paultpearson/TDAmapper")
+# library(TDAmapper)
+# library(fastcluster)
+# library(igraph)
+# # Run Mapper
+# 
+# #filter_values <- list(mds_coords_k3[, 1], mds_coords_k3[, 2], mds_coords_k3[, 3], mds_coords_k3[, 4], mds_coords_k3[, 5])
+# 
+# filter_values <- list(mds_coords_k3[, 1], mds_coords_k3[, 2])
+# 
+# mapper_result <- mapper(
+#   #distance_matrix = as.matrix(dist_object),   # use your js_distance_matrix
+#   as.matrix(dist_object),
+#   filter_values = filter_values,             # first two MDS components
+#   num_intervals = c(5, 5),                 # adjust based on resolution
+#   percent_overlap = 50,                      # how much overlap in filters
+#   num_bins_when_clustering = 20              # clusters per bin
+# )
+# g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
+# 
+# # Add size attribute (how many data points in each node)
+# V(g_mapper)$size <- sapply(mapper_result$points_in_vertex, length)
+# 
+# # Quick plot with node sizes proportional to number of points
+# plot(g_mapper, 
+#      vertex.size = sqrt(V(g_mapper)$size) * 2,
+#      vertex.label = NA,
+#      layout = layout_with_fr,
+#      main = "Mapper Graph from PDF Matrix")
+# 
+# 
+# word_list <- posterior_param_simple$word
+# 
+# # Get the words associated with each node
+# words_per_node <- lapply(mapper_result$points_in_vertex, function(indices) {
+#   word_list[indices]
+# })
+# 
+# names(words_per_node) <- paste0("Node_", seq_along(words_per_node))
+# 
+# print(words_per_node)
 
 
 ###################### Convert Python graph to R code ######################
 
 library(jsonlite)
 
-mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed42_int4_ov0.3.json")
+mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed42_int4_ov0_3.json")
 
 library(igraph)
 library(ggnetwork)
