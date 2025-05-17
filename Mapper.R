@@ -7,6 +7,7 @@ library(HMMpa)
 library(fields)
 library(philentropy)
 library(plotly)
+library(patchwork)
 
 final_results <- read.csv("final_results.csv")
 load("sbc.Rdata")
@@ -596,6 +597,7 @@ plot_mapper_colored_gg <- function(mapper_result,
                                    posterior_param_simple, 
                                    color_param, 
                                    alpha_param = NULL, 
+                                   label_param = NULL,
                                    main_title = NULL) {
 
   g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
@@ -615,6 +617,15 @@ plot_mapper_colored_gg <- function(mapper_result,
     V(g_mapper)$alpha_val <- 1
   }
   
+  if (!is.null(label_param)) {
+    label_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
+      mean(posterior_param_simple[[label_param]][idxs], na.rm = TRUE)
+    })
+    if(is.numeric(label_values))
+      label_values = round(label_values, 1)
+    V(g_mapper)$label_val <- label_values
+  }
+
   # show how many words in each vertex
   V(g_mapper)$size <- sapply(mapper_result$points_in_vertex, length)
   
@@ -633,10 +644,27 @@ plot_mapper_colored_gg <- function(mapper_result,
                                                    if (!is.null(alpha_param)) paste("/ Alpha:", alpha_param) else ""), 
                         main_title))
   
+  if(!is.null(label_param)){
+    p <- p + geom_nodelabel_repel(aes(label = label_val))
+  }
+  
   print(p)
 }
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "mu_mean", alpha_param = "back")
 
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "mu_mean")
+
+param_labelled_graphs = list()
+
+param_labelled_graphs[["mu"]] = plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "mu_mean", label_param = "mu_mean")
+
+param_labelled_graphs[["phi"]] = plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "phi_mean", label_param = "phi_mean")
+
+param_labelled_graphs[["theta"]] = plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "theta_mean", label_param = "theta_mean")
+
+param_labelled_graphs[["lambda"]] = plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "lambda_mean", label_param = "lambda_mean")
+
+(param_labelled_graphs[["mu"]] + param_labelled_graphs[["phi"]]) /
+  (param_labelled_graphs[["theta"]] + param_labelled_graphs[["lambda"]])
 
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back")
