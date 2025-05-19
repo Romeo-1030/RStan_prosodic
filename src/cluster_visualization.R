@@ -7,9 +7,9 @@ posterior_param_simple <- read.csv("posterior_param_simple.csv")
 
 ###################### Convert Python graph to R code ######################
 
-#mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed42_int4_ov0_3.json")
+#mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed_int4_ov0_3.json")
 
-mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed1_int4_ov0_3.json")
+mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed613_int4_ov0_3.json")
 points_in_vertex = mapper_result$points_in_vertex
 
 for (i in seq_along(points_in_vertex)) {
@@ -73,7 +73,7 @@ plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "bac
 
 
 
-node_indices <- points_in_vertex[[4]]
+node_indices <- points_in_vertex[[8]]
 words_in_node <- posterior_param_simple$word[node_indices]
 print(words_in_node)
 subset_rows <- posterior_param_simple[posterior_param_simple$word %in% words_in_node, ]

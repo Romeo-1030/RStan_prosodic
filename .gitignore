@@ -14,3 +14,4 @@
 .git-credentials
 .gitconfig
 .npm/_logs/*.log
+.Rproj.user
