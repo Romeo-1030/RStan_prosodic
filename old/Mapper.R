@@ -8,17 +8,18 @@ library(fields)
 library(philentropy)
 library(plotly)
 library(patchwork)
+library(boot)
 
-final_results <- read.csv("final_results.csv")
-load("sbc.Rdata")
+final_results <- read.csv("old/final_results.csv")
+load("data/sbc.Rdata")
 
 unique(final_results$word)
 cat("error words:", setdiff(sbc_top200, final_results$word))
 
 # Load the CSV files
-posterior_param <- read.csv("Lu.csv")[1:86]
-new_back_reverse <- read.csv("out_back_reverse.csv")
-new_front_reverse <- read.csv("out_front_reverse.csv")
+posterior_param <- read.csv("data/Lu.csv")[1:86]
+new_back_reverse <- read.csv("data/out_back_reverse.csv")
+new_front_reverse <- read.csv("data/out_front_reverse.csv")
 
 new_combined <- rbind(new_back_reverse, new_front_reverse)
 
@@ -416,6 +417,8 @@ pdf_matrix <- do.call(rbind, pdf_list)
 
 # Check dimensions
 dim(pdf_matrix) 
+
+
 
 ################## JSD ##################
 js_distance_matrix <- philentropy::distance(pdf_matrix,
