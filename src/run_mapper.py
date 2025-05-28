@@ -14,7 +14,10 @@ class WrappedMDS(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=5, normalized_stress='auto'):
         self.n_components = n_components
         self.normalized_stress = normalized_stress
-        self.mds = MDS(n_components=n_components, normalized_stress=normalized_stress)
+        self.mds = MDS(n_components=n_components, 
+                       dissimilarity='precomputed',
+                       normalized_stress=normalized_stress,
+                       random_state = random_state)
 
     def fit(self, X, y=None):
         self.mds.fit(X)
