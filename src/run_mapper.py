@@ -16,8 +16,8 @@ class WrappedMDS(BaseEstimator, TransformerMixin):
         self.normalized_stress = normalized_stress
         self.mds = MDS(n_components=n_components, 
                        dissimilarity='precomputed',
-                       normalized_stress=normalized_stress,
-                       random_state = random_state)
+                       normalized_stress=normalized_stress
+                       )
 
     def fit(self, X, y=None):
         self.mds.fit(X)
@@ -88,8 +88,9 @@ def save_result(export_data, seed, n_intervals, overlap, out_dir):
 # === Run everything ===
 def run(seed, n_intervals, overlap, out_dir):
     np.random.seed(seed)
-    distance_matrix = pd.read_csv("distance_matrix.csv").values
-    distance_matrix_raw = pd.read_csv("distance_matrix.csv")
+    distance_matrix = pd.read_csv("data/distance_matrix.csv").values
+    distance_matrix_raw = pd.read_csv("data/distance_matrix.csv")
+    distance_matrix = np.sqrt(distance_matrix)
     column_names = distance_matrix_raw.columns.tolist()
 
     pipe = build_pipeline(distance_matrix, n_intervals, overlap)
