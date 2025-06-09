@@ -90,11 +90,11 @@ def run(seed, n_intervals, overlap, out_dir):
     np.random.seed(seed)
     distance_matrix = pd.read_csv("data/distance_matrix.csv").values
     distance_matrix_raw = pd.read_csv("data/distance_matrix.csv")
-    distance_matrix = np.sqrt(distance_matrix)
+    distance_matrix_sqrt = np.sqrt(distance_matrix)
     column_names = distance_matrix_raw.columns.tolist()
 
-    pipe = build_pipeline(distance_matrix, n_intervals, overlap)
-    mapper_graph = pipe.fit_transform(distance_matrix)
+    pipe = build_pipeline(distance_matrix_sqrt, n_intervals, overlap)
+    mapper_graph = pipe.fit_transform(distance_matrix_sqrt)
     export_data = process_mapper_graph(mapper_graph)
 
     print_nodes(export_data, column_names)
@@ -119,5 +119,5 @@ if __name__ == "__main__":
 
 # Note for Haoran:
 # How to use it?
-# python run_mapper.py --seed 42 --n_intervals 4 --overlap 0.3 --out_dir /Users/lu/Desktop/Projects/RStan_prosodic/Cluster_Result
+# python src/run_mapper.py --seed 688 --n_intervals 4 --overlap 0.3 --out_dir /Users/lu/Desktop/Projects/RStan_prosodic/data/cluster_result
 
