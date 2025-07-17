@@ -11,27 +11,30 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 # === Custom MDS Wrapper ===
 class WrappedMDS(BaseEstimator, TransformerMixin):
-    def __init__(self, n_components=5, normalized_stress='auto'):
+    def __init__(self, n_components=5, normalized_stress='auto', random_state=None):
         self.n_components = n_components
         self.normalized_stress = normalized_stress
-        self.mds = MDS(n_components=n_components, 
-                       dissimilarity='precomputed',
-                       normalized_stress=normalized_stress
-                       )
+        self.random_state = random_state
+        self.mds = MDS(
+            n_components=n_components, 
+            dissimilarity='precomputed',
+            normalized_stress=normalized_stress,
+            random_state=random_state
+        )
 
     def fit(self, X, y=None):
         self.mds.fit(X)
         return self
 
     def transform(self, X):
-        return self.mds.fit_transform(X)
+        return self.mds.transform(X)
 
     def fit_transform(self, X, y=None):
         return self.mds.fit_transform(X)
 
 # === Build the Mapper pipeline ===
-def build_pipeline(distance_matrix, n_intervals, overlap):
-    filter_func = WrappedMDS(n_components=5)
+def build_pipeline(distance_matrix, n_intervals, overlap, seed):
+    filter_func = WrappedMDS(n_components=5, random_state=seed)
     cover = CubicalCover(n_intervals=n_intervals, overlap_frac=overlap)
     clusterer = DBSCAN(metric="precomputed").fit(distance_matrix)
 
@@ -84,16 +87,15 @@ def save_result(export_data, seed, n_intervals, overlap, out_dir):
         json.dump(export_data, f)
     print(f"\nSaved mapper result to: {output_file}")
 
-
 # === Run everything ===
 def run(seed, n_intervals, overlap, out_dir):
     np.random.seed(seed)
-    distance_matrix = pd.read_csv("data/distance_matrix.csv").values
-    distance_matrix_raw = pd.read_csv("data/distance_matrix.csv")
+    distance_matrix = pd.read_csv("../data/distance_matrix.csv").values
+    distance_matrix_raw = pd.read_csv("../data/distance_matrix.csv")
     distance_matrix_sqrt = np.sqrt(distance_matrix)
     column_names = distance_matrix_raw.columns.tolist()
 
-    pipe = build_pipeline(distance_matrix_sqrt, n_intervals, overlap)
+    pipe = build_pipeline(distance_matrix_sqrt, n_intervals, overlap, seed)
     mapper_graph = pipe.fit_transform(distance_matrix_sqrt)
     export_data = process_mapper_graph(mapper_graph)
 
