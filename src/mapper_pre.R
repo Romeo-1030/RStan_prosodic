@@ -8,17 +8,18 @@ library(fields)
 library(philentropy)
 library(plotly)
 library(patchwork)
+source(here("src", "utils.R"))
 
-final_results <- read.csv("final_results.csv")
-load("sbc.Rdata")
+final_results <- read.csv(here("data", "model_results.csv"))
+load(here("data", "sbc.Rdata"))
 
 unique(final_results$word)
 cat("error words:", setdiff(sbc_top200, final_results$word))
 
 # Load the CSV files
-posterior_param <- read.csv("Lu.csv")[1:86]
-new_back_reverse <- read.csv("out_back_reverse.csv")
-new_front_reverse <- read.csv("out_front_reverse.csv")
+posterior_param <- read.csv(here("data", "Lu.csv"))[1:86]
+new_back_reverse <- read.csv(here("data", "out_back_reverse.csv"))
+new_front_reverse <- read.csv(here("data", "out_front_reverse.csv"))
 
 new_combined <- rbind(new_back_reverse, new_front_reverse)
 
@@ -327,6 +328,11 @@ compute_joint_pdf <- function(row, max_length = 24, max_place = 24) {
         #print(p_place_given_length)
         joint_pdf[unit_length + 1, place + 1] <- p_lengths[unit_length + 1] * p_place_given_length
       }
+
+      if (row$back) {
+        valid_range <- 0:unit_length
+        joint_pdf[unit_length + 1, valid_range + 1] <- rev(joint_pdf[unit_length + 1, valid_range + 1])
+      }
     }
     
   } else if (model_type == "hurdle") {
@@ -387,7 +393,7 @@ compute_joint_pdf <- function(row, max_length = 24, max_place = 24) {
 }
 
 
-row <- posterior_param_simple[posterior_param_simple$word == "before", ]
+row <- posterior_param_simple[posterior_param_simple$word == "her", ]
 #print(row)
 pdf <- compute_joint_pdf(row)
 
@@ -430,3 +436,5 @@ heatmap(js_distance_matrix,
         main = "Jensen-Shannon Distance Heatmap",
         col = heat.colors(256),
         margins = c(5, 5))
+
+write.csv(js_distance_matrix, here("data", "distance_matrix.csv"), row.names = FALSE)

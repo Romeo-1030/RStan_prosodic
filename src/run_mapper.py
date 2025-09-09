@@ -33,10 +33,10 @@ class WrappedMDS(BaseEstimator, TransformerMixin):
         return self.mds.fit_transform(X)
 
 # === Build the Mapper pipeline ===
-def build_pipeline(distance_matrix, n_intervals, overlap, seed):
+def build_pipeline(distance_matrix, n_intervals, overlap, eps, seed):
     filter_func = WrappedMDS(n_components=5, random_state=seed)
     cover = CubicalCover(n_intervals=n_intervals, overlap_frac=overlap)
-    clusterer = DBSCAN(metric="precomputed").fit(distance_matrix)
+    clusterer = DBSCAN(metric="precomputed", eps=eps).fit(distance_matrix)
 
     pipe = make_mapper_pipeline(
         filter_func=filter_func,
@@ -79,28 +79,29 @@ def print_nodes(export_data, column_names):
         print(f"  Words: {words}")
 
 # === Save result to a specific directory ===
-def save_result(export_data, seed, n_intervals, overlap, out_dir):
+def save_result(export_data, seed, n_intervals, overlap, eps, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    filename = f"mapper_result_seed{seed}_int{n_intervals}_ov{str(overlap).replace('.', '_')}.json"
+    filename = (f"mapper_result_seed{seed}_int{n_intervals}" +
+                f"_ov{str(overlap).replace('.', '_')}_eps{str(eps).replace('.', '_')}.json")
     output_file = os.path.join(out_dir, filename)
     with open(output_file, "w") as f:
         json.dump(export_data, f)
     print(f"\nSaved mapper result to: {output_file}")
 
 # === Run everything ===
-def run(seed, n_intervals, overlap, out_dir):
+def run(seed, n_intervals, overlap, eps, out_dir):
     np.random.seed(seed)
     distance_matrix = pd.read_csv("../data/distance_matrix.csv").values
     distance_matrix_raw = pd.read_csv("../data/distance_matrix.csv")
     distance_matrix_sqrt = np.sqrt(distance_matrix)
     column_names = distance_matrix_raw.columns.tolist()
 
-    pipe = build_pipeline(distance_matrix_sqrt, n_intervals, overlap, seed)
+    pipe = build_pipeline(distance_matrix_sqrt, n_intervals, overlap, eps, seed)
     mapper_graph = pipe.fit_transform(distance_matrix_sqrt)
     export_data = process_mapper_graph(mapper_graph)
 
     print_nodes(export_data, column_names)
-    save_result(export_data, seed, n_intervals, overlap, out_dir)
+    save_result(export_data, seed, n_intervals, overlap, eps, out_dir)
 
 # === Entry Point ===
 if __name__ == "__main__":
@@ -108,6 +109,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--n_intervals", type=int, default=4, help="Number of intervals in the cover")
     parser.add_argument("--overlap", type=float, default=0.3, help="Overlap fraction in the cover")
+    parser.add_argument("--eps", type=float, default=0.3, help="Epsilon value for DBSCAN")
     parser.add_argument("--out_dir", type=str, default=".", help="Directory to save the result")
     args = parser.parse_args()
 
@@ -115,6 +117,7 @@ if __name__ == "__main__":
         seed=args.seed,
         n_intervals=args.n_intervals,
         overlap=args.overlap,
+        eps=args.eps,
         out_dir=args.out_dir
     )
 

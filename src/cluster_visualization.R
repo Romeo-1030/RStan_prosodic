@@ -6,13 +6,15 @@ library(jsonlite)
 library(dplyr)
 library(tidyr)
 library(purrr)
-posterior_param_simple <- read.csv("data/posterior_param_simple.csv")
+library(here)
+posterior_param_simple <- read.csv(here("data/posterior_param_simple.csv"))
 
 ###################### Convert Python graph to R code ######################
 
 #mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed_int4_ov0_3.json")
-
-mapper_result <- jsonlite::fromJSON("data/cluster_result/seed681/mapper_result_seed681_int4_ov0_3.json")
+# Also good: mapper_result_seed688_int3_ov0_3_eps0_25 
+json_text <- readLines(here("data/cluster_result/seed688/mapper_result_seed688_int3_ov0_2_eps0_2.json"))
+mapper_result <- jsonlite::fromJSON(json_text)
 points_in_vertex = mapper_result$points_in_vertex
 
 for (i in seq_along(points_in_vertex)) {
@@ -78,6 +80,8 @@ plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "bac
 
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "mu_mean")
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "phi_mean")
+plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "theta_mean")
+plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "lambda_mean")
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "waic_scaled")
 
 
