@@ -121,5 +121,5 @@ if __name__ == "__main__":
 
 # Note for Haoran:
 # How to use it?
-# python src/run_mapper.py --seed 688 --n_intervals 4 --overlap 0.3 --out_dir /Users/lu/Desktop/Projects/RStan_prosodic/data/cluster_result
+# python src/run_mapper.py --seed 688 --n_intervals 4 --overlap 0.3 --out_dir data/cluster_result
 
