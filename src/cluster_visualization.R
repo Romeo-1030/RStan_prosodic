@@ -12,14 +12,16 @@ posterior_param_simple <- read.csv(here("data/posterior_param_simple.csv"))
 ###################### Convert Python graph to R code ######################
 
 #mapper_result <- jsonlite::fromJSON("Cluster_result/mapper_result_seed_int4_ov0_3.json")
+
+
 # Also good: mapper_result_seed688_int3_ov0_3_eps0_25 
-json_text <- readLines(here("data/cluster_result/seed688/mapper_result_seed688_int3_ov0_2_eps0_2.json"))
+json_text <- readLines(here("data/cluster_result/seed688/mapper_result_seed42_int3_ov0_3_eps0_3.json"))
 mapper_result <- jsonlite::fromJSON(json_text)
 points_in_vertex = mapper_result$points_in_vertex
 
 for (i in seq_along(points_in_vertex)) {
   cat(sprintf("Vertex %d:\n", i))
-  print(posterior_param_simple$word[points_in_vertex[[i]]])
+  print(posterior_param_simple$word[points_in_vertex[[i]] + 1])
   cat("\n")
 }
 plot_mapper_colored_gg <- function(mapper_result, 
@@ -50,7 +52,7 @@ plot_mapper_colored_gg <- function(mapper_result,
   V(g_mapper)$size <- sapply(mapper_result$points_in_vertex, length)
   V(g_mapper)$node_id <- seq_len(igraph::vcount(g_mapper))  
   
-  set.seed(1)
+  set.seed(2)
   layout_fr <- layout_with_fr(g_mapper)
   net_data <- ggnetwork(g_mapper, layout = layout_fr)
   
@@ -75,9 +77,7 @@ plot_mapper_colored_gg <- function(mapper_result,
 #plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "mu_mean", alpha_param = "back")
 
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "mu_mean")
-
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back")
-
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "mu_mean")
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "phi_mean")
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "theta_mean")
@@ -102,7 +102,7 @@ for (seed in seeds) {
   mapper_result <- fromJSON(path)
   
   for (vertex_id in seq_along(mapper_result$points_in_vertex)) {
-    word_indices <- mapper_result$points_in_vertex[[vertex_id]]
+    word_indices <- mapper_result$points_in_vertex[[vertex_id]] + 1
     word_list <- posterior_param_simple$word[word_indices]
     word_string <- paste(word_list, collapse = " ")
     df_tmp <- data.frame(
@@ -122,7 +122,3 @@ all_cluster_df_wide <- pivot_wider(all_cluster_df_long,
                                    values_from = words)
 
 write.csv(all_cluster_df_wide, "data/clusters__int3_ov0_4.csv", row.names = FALSE)
-
-
-
-

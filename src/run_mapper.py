@@ -107,7 +107,7 @@ def run(seed, n_intervals, overlap, eps, out_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Mapper with configurable parameters")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--n_intervals", type=int, default=4, help="Number of intervals in the cover")
+    parser.add_argument("--n_intervals", type=int, default=3, help="Number of intervals in the cover")
     parser.add_argument("--overlap", type=float, default=0.3, help="Overlap fraction in the cover")
     parser.add_argument("--eps", type=float, default=0.3, help="Epsilon value for DBSCAN")
     parser.add_argument("--out_dir", type=str, default=".", help="Directory to save the result")
