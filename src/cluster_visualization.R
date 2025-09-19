@@ -3,6 +3,7 @@ library(ggnetwork)
 library(ggplot2)
 library(scales)
 library(jsonlite)
+library(readr)
 library(dplyr)
 library(tidyr)
 library(purrr)
@@ -15,7 +16,7 @@ posterior_param_simple <- read.csv(here("data/posterior_param_simple.csv"))
 
 
 # Also good: mapper_result_seed688_int3_ov0_3_eps0_25 
-json_text <- readLines(here("data/cluster_result/seed688/mapper_result_seed42_int3_ov0_3_eps0_3.json"))
+json_text <- readLines(here("data/cluster_result/seed688/mapper_result_seed688_int2_ov0_3_eps0_25.json"))
 mapper_result <- jsonlite::fromJSON(json_text)
 points_in_vertex = mapper_result$points_in_vertex
 
@@ -31,7 +32,10 @@ plot_mapper_colored_gg <- function(mapper_result,
                                    main_title = NULL) {
   
   g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
-  
+
+  sim_matrix <- get_sim_matrix(mapper_result$points_in_vertex)
+  g_mapper <- add_edge_weights(g_mapper, sim_matrix)
+
   # mean of each node for color
   color_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
     mean(posterior_param_simple[[color_param]][idxs], na.rm = TRUE)
@@ -53,11 +57,20 @@ plot_mapper_colored_gg <- function(mapper_result,
   V(g_mapper)$node_id <- seq_len(igraph::vcount(g_mapper))  
   
   set.seed(2)
-  layout_fr <- layout_with_fr(g_mapper)
-  net_data <- ggnetwork(g_mapper, layout = layout_fr)
+  layout_kk <- layout_with_kk(
+    g_mapper,
+    weights = 1 - E(g_mapper)$weight + .000001,
+    kkconst = max(vcount(g_mapper) * 2, 1)
+  )
+
+  layout_fr <- layout_with_fr(
+    g_mapper,
+    weights = E(g_mapper)$weight,
+  )
+  net_data <- ggnetwork(g_mapper, layout = layout_kk)
   
   p <- ggplot(net_data, aes(x = x, y = y, xend = xend, yend = yend)) +
-    geom_edges(color = "grey70") +
+    geom_edges(aes(alpha = log(weight)), color = "grey70") +
     geom_nodes(aes(color = color_val, alpha = alpha_val, size = size)) +
     geom_text(aes(label = node_id), size = 3, vjust = -0.8) +
     scale_color_viridis_c(option = "B", name = color_param) +
@@ -73,6 +86,37 @@ plot_mapper_colored_gg <- function(mapper_result,
   print(p)
 }
 
+jaccard_sim <- function(set_1, set_2){
+  length(intersect(set_1, set_2)) / length(union(set_1, set_2))
+}
+
+get_sim_matrix <- function(points_in_vertex){
+  sim_matrix = matrix(nrow = length(points_in_vertex), ncol = length(points_in_vertex))
+  for (i in seq_along(points_in_vertex)) {
+    for(j in seq_along(points_in_vertex)){
+      sim_matrix[i, j] = jaccard_sim(posterior_param_simple$word[points_in_vertex[[i]] + 1],
+        posterior_param_simple$word[points_in_vertex[[j]] + 1])
+    }
+  }
+  sim_matrix
+}
+
+add_edge_weights <- function(g, sim_matrix){
+  nodes = ends(g, E(g))
+  for(i in 1:ecount(g)){
+    node1 <- nodes[i, 1]
+    node2 <- nodes[i, 2]
+    E(g)[i]$weight <- sim_matrix[node1, node2] 
+  }
+  g
+}
+
+max_off_diagonal <- function(m){
+  for(i in 1:nrow(m)){
+    m[i, i] = -Inf
+  }
+  max(m)
+}
 
 #plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "mu_mean", alpha_param = "back")
 
@@ -122,3 +166,10 @@ all_cluster_df_wide <- pivot_wider(all_cluster_df_long,
                                    values_from = words)
 
 write.csv(all_cluster_df_wide, "data/clusters__int3_ov0_4.csv", row.names = FALSE)
+
+sapply(points_in_vertex,
+  \(x) posterior_param_simple$word[x + 1] %>% paste(collapse = ",")
+) %>%
+  data.frame %>%
+  write_csv(here("output", "mapper_result_seed688_int2_ov0_3_eps0_25.csv"))
+  

@@ -1,0 +1,58 @@
+,.,
+1,"'d,'re,ca,could,had,never,think,thought,was,went,would","aux, semantically light Vs"
+2,"'d,'ll,'m,'re,'s,ca,think,thought,was","aux, semantically light Vs"
+3,"d,'re,'ve,always,been,came,could,got,had,have,n't,need,never,not,only,still,think,thought,told,wan,was,went,would","aux, semantically light Vs"
+4,"d,'ll,'m,'re,'ve,need,think,thought,was","aux, semantically light Vs"
+31,"been,lot,na,wanted","aux, semantically light Vs"
+32,"been,gon,na","aux, semantically light Vs"
+33,"been,every,pretty,tell,very","aux, semantically light Vs, prenominal"
+34,"ca,could,just,never,went,would","aux, adverb"
+35,"ca,guess,mean,should,think,was","aux, semantically light Vs"
+36,"could,just,never,not,only,probably,went,would","aux, adverb"
+13,"all,are,ca,could,had,is,look,should,some,think,this,those,was,went,would",
+17,"all,always,are,been,came,can,could,do,even,first,get,go,had,has,have,is,kind,look,lot,make,not,one,put,should,some,still,think,this,those,want,was,went,were,will,would,give",
+19,"always,been,came,every,not,pretty,told","adverb, semantically light verb, prenominal"
+20,"always,been,came,goes,never,not,pretty,said,still,told,remember",
+47,"just,never,not,probably,said,remember",
+15,"all,always,are,as,been,came,can,do,even,first,get,go,has,have,kind,lot,make,not,one,put,some,this,those,want,wanted,went,were,will,give",
+5,"a,all,any,as,at,by,come,for,getting,in,into,some,than,this,those,with",n projecting
+6,"a,all,any,at,by,come,for,getting,in,into,of,on,over,some,than,this,those,through,with",n projecting
+7,"a,all,any,at,by,come,five,for,four,from,getting,in,into,kinda,on,over,really,some,than,this,those,three,through,two,with",n projecting
+8,"a,all,any,as,be,getting,go,going,long,one,people,some,than,this,those",n projecting
+9,"a,about,after,all,any,be,doing,down,getting,go,going,guy,her,more,off,on,one,over,people,some,than,them,this,those,through,way","n projecting, light n"
+10,"a,about,all,any,around,be,before,doing,down,five,four,getting,go,going,good,guy,her,me,more,much,off,on,one,out,over,people,really,say,some,something,than,them,this,those,three,through,too,two,up,way,years","n projecting, light n"
+11,"after,maybe,what,when,where,who,you",wh and other utterance beginning
+12,"all,an,another,are,big,different,little,my,new,of,other,our,real,some,the,their,this,those,whole,your,his",
+14,"all,an,are,big,different,is,look,new,real,really,see,some,this,those,two,remember",
+16,"all,always,are,been,came,different,first,get,go,kind,lot,make,not,one,other,some,this,those,want,were,will",
+18,"all,always,are,been,before,call,came,different,first,get,go,goes,good,is,kind,like,look,lot,make,not,one,really,said,say,see,some,still,this,those,two,want,were,will,remember",
+21,"and,because,but,cause,maybe,so,well,when,where,which,who",
+22,"anything,around,before,day,em,everything,him,me,much,off,out,people,stuff,them,thing,things,time,too,up,us,way,work,year,years",
+23,"are,as,did,does,he,it,she,that,there,they,we,went,what,why,you",
+24,"are,ca,could,did,does,he,is,it,just,look,she,should,that,there,they,went,what,why,would,you",
+25,"are,as,can,did,do,does,even,has,he,how,if,not,that,there,they,we,went,what,why,will,you",
+26,"are,can,could,did,do,does,even,has,he,is,just,look,not,should,that,there,they,went,what,why,will,would,you",
+27,"are,is,just,look,not,really,said,see,that,what,why,will,you,remember",
+28,"as,he,it,let,maybe,she,there,they,we,what,you",
+29,"as,he,if,let,long,maybe,there,they,we,what,when,where,you",
+30,"because,maybe,now,so,well",
+37,"day,here,stuff,though,too,years",
+38,"different,good,ten",
+39,"everything,man",
+40,"god,uh,man",
+41,"god,sure",
+42,"good,know,or,said,great",
+43,"he,i,let,maybe,she,they,we",
+44,"he,maybe,now,she,they",
+45,"he,now,she,they,why",
+46,"he,i,if,let,maybe,they,we,when,where",
+48,"know,said,sure",
+49,"know,right",
+50,"maybe,really,what,you",
+51,"mean,or","second place, projecting"
+52,"mhm,mm,okay,yeah,alright",interjections
+53,"mm,okay,right,um,yeah,yes,alright",interjections
+54,"mom,now,why",interjections
+55,"no,right",interjections
+56,"oh,well",interjections
+57,then,singleton
