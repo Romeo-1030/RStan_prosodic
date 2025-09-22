@@ -67,13 +67,21 @@ plot_mapper_colored_gg <- function(mapper_result,
     g_mapper,
     weights = E(g_mapper)$weight,
   )
+
+  layout_dh <- layout_with_dh(
+    g_mapper
+  )
+
+  layout_drl <- layout_with_drl(
+    g_mapper
+  )
   net_data <- ggnetwork(g_mapper, layout = layout_kk)
   
   p <- ggplot(net_data, aes(x = x, y = y, xend = xend, yend = yend)) +
     geom_edges(aes(alpha = log(weight)), color = "grey70") +
     geom_nodes(aes(color = color_val, alpha = alpha_val, size = size)) +
     geom_text(aes(label = node_id), size = 3, vjust = -0.8) +
-    scale_color_viridis_c(option = "B", name = color_param) +
+    scale_color_viridis_c(name = color_param, limits = c(0, 1)) +
     scale_alpha_continuous(range = c(0.2, 1), name = alpha_param) +
     scale_size_continuous(range = c(3, 15)) + 
     guides(size = guide_legend(title = "Words per node")) +
@@ -122,6 +130,9 @@ max_off_diagonal <- function(m){
 
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back", alpha_param = "mu_mean")
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back")
+plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "back")
+ggsave(here("output", "svg", "mapper", "mapper_back.svg"), width = 2400, height = 1500, units = "px")
+
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "mu_mean")
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "phi_mean")
 plot_mapper_colored_gg(mapper_result, posterior_param_simple, color_param = "theta_mean")
