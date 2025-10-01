@@ -33,7 +33,7 @@ plot_mapper_colored_gg <- function(mapper_result,
   
   g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
 
-  sim_matrix <- get_sim_matrix(mapper_result$points_in_vertex)
+  sim_matrix <- get_intersect_size_matrix(mapper_result$points_in_vertex)
   g_mapper <- add_edge_weights(g_mapper, sim_matrix)
 
   # mean of each node for color
@@ -49,6 +49,7 @@ plot_mapper_colored_gg <- function(mapper_result,
     })
     V(g_mapper)$alpha_val <- alpha_values
   } else {
+    print("hi")
     V(g_mapper)$alpha_val <- 1
   }
   
@@ -56,10 +57,16 @@ plot_mapper_colored_gg <- function(mapper_result,
   V(g_mapper)$size <- sapply(mapper_result$points_in_vertex, length)
   V(g_mapper)$node_id <- seq_len(igraph::vcount(g_mapper))  
   
+  node_order = c(31, 21, 22, 19, 20, 30, 28, 27, 26, 29, 23, 24, 25, 4,
+                 7, 2, 10, 1, 3, 9, 5, 11, 12, 13,
+                16, 6, 8, 18, 17, 14, 15)
+  perm = purrr::map(1:31, \(x) which(node_order == x)) %>% unlist
+  g_mapper = permute(g_mapper, perm)
+
   set.seed(2)
   layout_kk <- layout_with_kk(
     g_mapper,
-    weights = 1 - E(g_mapper)$weight + .000001,
+    weights = max(E(g_mapper)$weight) - E(g_mapper)$weight + .000001,
     kkconst = max(vcount(g_mapper) * 2, 1)
   )
 
@@ -75,11 +82,18 @@ plot_mapper_colored_gg <- function(mapper_result,
   layout_drl <- layout_with_drl(
     g_mapper
   )
-  net_data <- ggnetwork(g_mapper, layout = layout_kk)
+  
+  layout_circle <- layout_in_circle(
+    g_mapper
+  )
+
+  
+
+  net_data <- ggnetwork(g_mapper, layout = layout_dh)
   
   p <- ggplot(net_data, aes(x = x, y = y, xend = xend, yend = yend)) +
     geom_edges(aes(alpha = log(weight)), color = "grey70") +
-    geom_nodes(aes(color = color_val, alpha = alpha_val, size = size)) +
+    geom_nodes(aes(color = color_val, size = size)) +
     geom_text(aes(label = node_id), size = 3, vjust = -0.8) +
     scale_color_viridis_c(name = color_param, limits = c(0, 1)) +
     scale_alpha_continuous(range = c(0.2, 1), name = alpha_param) +
@@ -108,6 +122,18 @@ get_sim_matrix <- function(points_in_vertex){
   }
   sim_matrix
 }
+
+get_intersect_size_matrix <- function(points_in_vertex){
+  sim_matrix = matrix(nrow = length(points_in_vertex), ncol = length(points_in_vertex))
+  for (i in seq_along(points_in_vertex)) {
+    for(j in seq_along(points_in_vertex)){
+      sim_matrix[i, j] = length(intersect(posterior_param_simple$word[points_in_vertex[[i]] + 1],
+        posterior_param_simple$word[points_in_vertex[[j]] + 1]))
+    }
+  }
+  sim_matrix
+}
+
 
 add_edge_weights <- function(g, sim_matrix){
   nodes = ends(g, E(g))
