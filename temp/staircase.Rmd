@@ -1,0 +1,88 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Import the SBC:
+```{r}
+library(tidyverse)
+load("~/Desktop/Projects/RStan_prosodic/data/sbc.Rdata")
+```
+Get fixed unit length values:
+```{r}
+sbc = sbc %>% group_by(docId, unitId) %>% mutate(unitWordLen = sum(kind == "word")) %>% ungroup
+```
+
+Import mapper result:
+```{r}
+library(jsonlite)
+mapper <- fromJSON("~/Desktop/Projects/RStan_prosodic/src/data/cluster_result/mapper_result_seed688_int2_ov0_1_eps0_35.json")
+
+```
+
+word_info
+```{r}
+df <- read_csv("~/Desktop/Projects/RStan_prosodic/data/posterior_param_simple.csv")
+
+```
+
+
+Code for producing staircases:
+```{r}
+get_avg_starfish <- function(words, node_id) {
+  counts <- sbc %>%
+    filter(text %in% words) %>%
+    group_by(place, unitWordLen) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    filter(unitWordLen < 20, !is.na(place), !is.na(unitWordLen))
+
+  if (nrow(counts) == 0) return(NULL)
+
+  g <- ggplot(counts, aes(place, unitWordLen)) +
+    ggtitle(paste0("Average staircase for node ", node_id, "\n(", paste(words, collapse=", "), ")")) +
+    theme_bw() +
+    ylab("IU length") + xlab("Place") +
+    geom_tile(aes(fill = n), color = "white") +
+    scale_fill_gradient(low = "white", high = "darkblue", space = "Lab") +
+    theme(
+      axis.text.x = element_text(angle = 90),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.border = element_blank(),
+      panel.grid.major = element_line(color = "#eeeeee"),
+      panel.grid.minor = element_line(color = "#dddddd")
+    ) +
+    scale_y_continuous(trans = "reverse", breaks = 1:20)
+  return(g)
+}
+
+# ---- loop over mapper nodes ----
+plots <- list()
+
+for (i in seq_along(mapper$points_in_vertex)) {
+  node_points <- mapper$points_in_vertex[[i]]
+  node_words <- df$word[node_points + 1]
+
+  p <- get_avg_starfish(node_words, i)
+  if (!is.null(p)) {
+    plots[[i]] <- p
+    ggsave(
+      filename = sprintf("figure/node_%02d_avg.png", i),
+      plot = p,
+      width = 6, height = 5, dpi = 300
+    )
+  }
+}
+
+plots[[19]]
+```
+
+```{r}
+
+reversed <- df %>%
+  filter((back == FALSE & hurdle_place < 0) | (back == TRUE & hurdle_place >= 0))
+
+```
+
+
+
