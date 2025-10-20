@@ -1,0 +1,292 @@
+
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Import the SBC:
+```{r}
+library(tidyverse)
+sbc = read_csv("/home/ryan/Staircases/sbc_2.0.5.csv", col_types = c("icinnnnnnciiciiiiccccccililnnnlccccclcllicccicicicccccciciciici"))
+sbc = sbc %>% mutate(text = case_when(
+  text == "uh-" ~ "uh",
+  text == "hm" ~ "hmm",
+  text == "m" ~"mm",
+  text == "hm-m" ~ "hm-mm",
+  text == "ooh" ~ "oo",
+  text == "aa" ~"ah",
+  text == "nyah" ~ "nya",
+  T ~ text
+))
+
+intj = read_csv("/home/ryan/Staircases/intj_for_heatmaps.csv")
+nonintj = read_csv("/home/ryan/Staircases/non-intj_for_heatmaps.csv")
+intj_strings = intj %>% filter(!is.na(Word)) %>% pull(Word)
+nintj_strings = nonintj$Wordform
+
+sbc = sbc %>% mutate(text_lower = tolower(text))
+```
+
+
+Get fixed unit length values:
+```{r}
+sbc = sbc %>% group_by(docId, unitId) %>% mutate(unitWordLen = sum(kind == "word")) %>% ungroup
+```
+
+Code for producing staircases:
+```{r}
+get_starfish = function(targetWord){
+  counts = sbc %>% filter(text_lower == targetWord) %>%
+    group_by(place, unitWordLen) %>%
+    count %>% ungroup %>%
+    filter(unitWordLen < 20, !is.na(place), !is.na(unitWordLen))
+  ggplot(counts, aes(place, unitWordLen)) +
+    ggtitle(paste0('Frequency of ', targetWord, ' by position (front)')) +
+    ylab('IU length') +
+    xlab('Place') +
+    geom_tile(aes(fill = n), color='white') +
+    geom_text(aes(label = n)) +
+    scale_fill_gradient(low = 'white', high = 'darkblue') +
+    theme(axis.text.x=element_text(angle=90),
+          axis.ticks=element_blank(),
+          axis.line=element_blank(),
+          panel.border=element_blank(),
+          panel.grid.major=element_line(color='#eeeeee'),
+          panel.grid.minor=element_line(color='#dddddd')) +
+    scale_y_continuous(trans = "reverse", breaks = 20:0, limits = c(20, 0)) +
+    scale_x_continuous(breaks = 0:20, limits = c(0, 20)) + theme_grey()
+}
+```
+
+```{r}
+word = "who"
+  counts = sbc %>% filter(text == word) %>%
+    group_by(place, unitWordLen) %>%
+    count %>% ungroup %>%
+    filter(unitWordLen < 20, !is.na(place), !is.na(unitWordLen))
+  counts
+```
+
+Get starfish:
+```{r}
+word = "why"
+get_and_save_frontfish = function(word){
+  counts = sbc %>% filter(text == word) %>%
+    group_by(place, unitWordLen) %>%
+    count %>% ungroup %>%
+    filter(unitWordLen < 20, !is.na(place), !is.na(unitWordLen))
+  print(counts)
+  print(get_starfish(word))
+  ggsave(paste0("/home/ryan/Staircases/individual_staircases/", word, "_front.png"))
+}
+sapply(intj_strings, get_and_save_frontfish)
+sapply(nintj_strings, get_and_save_frontfish)
+get_and_save_frontfish("oh")
+get_starfish("oh")
+
+```
+
+Code for producing back staircases:
+```{r}
+get_backfish = function(targetWord){
+  counts = sbc %>% filter(text_lower == targetWord) %>%
+    group_by(place, unitWordLen) %>%
+    count %>% ungroup %>%
+    filter(unitWordLen < 20, !is.na(place), !is.na(unitWordLen)) %>%
+    mutate(back = unitWordLen - place + 1)
+  ggplot(counts, aes(back, unitWordLen)) +
+    ggtitle(paste0('Frequency of ', targetWord, ' by position (back)')) +
+    theme_bw() +
+    ylab('IU length') +
+    xlab('Place') +
+    geom_tile(aes(fill = n), color='white') +
+    geom_text(aes(label = n)) +
+    scale_fill_gradient(low = 'white', high = 'darkblue', space = 'Lab') +
+    theme(axis.text.x=element_text(angle=90),
+          axis.ticks=element_blank(),
+          axis.line=element_blank(),
+          panel.border=element_blank(),
+          panel.grid.major=element_line(color='#eeeeee'),
+          panel.grid.minor=element_line(color='#dddddd')) +
+    scale_y_continuous(trans = "reverse", breaks = 20:0, limits = c(20, 0)) +
+    scale_x_continuous(trans = "reverse", breaks = 20:0, limits = c(20, 0)) + theme_grey()
+}
+```
+
+
+Get backfish:
+```{r}
+word = "too"
+get_and_save_backfish = function(word){
+  counts = sbc %>% filter(text == word) %>%
+    group_by(place, unitWordLen) %>%
+    count %>% ungroup %>%
+    filter(unitWordLen < 20, !is.na(place), !is.na(unitWordLen)) %>%
+    mutate(back = unitWordLen - place + 1)
+  counts
+  get_backfish(word)
+  ggsave(paste0("/home/ryan/Staircases/individual_staircases/", word, "_back.png"))
+}
+sapply(intj_strings, get_and_save_backfish)
+sapply(nintj_strings, get_and_save_backfish)
+get_backfish("oh")
+
+```
+
+
+Get tokenlist by frequency:
+```{r}
+wordFreq = sbc %>% filter(!is.na(text), kind == "word") %>% group_by(text) %>% count %>% arrange(desc(n))
+wordFreq
+```
+
+## Doing hierarchical clustering
+
+Get probabilities:
+```{r}
+getProbs = function(word){
+  n_total = nrow(sbc %>% filter(text == word))
+  sbc %>% filter(text == word) %>%
+    group_by(place, unitWordLen) %>%
+    summarise(p = n() / n_total, .groups = "keep") %>% ungroup %>%
+    rename_with(~ paste0("p_", word), "p")
+}
+
+getProbsMultiple = function(words){
+  counts = lapply(words, getProbs)
+  result = reduce(counts, full_join, place, by = c("place", "unitWordLen"))
+  result[is.na(result)] = 0
+  result
+}
+```
+
+Define cluster width:
+```{r}
+getClusterWidth = function(words){
+  clusterDistrs = getProbsMultiple(words)
+  sum(apply(as.matrix(clusterDistrs[,-c(1,2)]), 1, max)) - 1
+}
+```
+
+Do hierarchichal clustering:
+```{r}
+clustersToRow = function(clusters, words){
+  result = data.frame(t(integer(length(words))))
+  colnames(result) = words
+  for(i in 1:length(clusters)){
+    for(word in clusters[i]){
+      result[,word] = i
+    }
+  }
+  result
+}
+
+mergeClusters = function(clusters, clust1, clust2){
+  clusters[[clust1]] = c(clusters[[clust1]], clusters[[clust2]])
+  clusters[-clust2]
+}
+
+clusterToString = function(cluster){
+  paste0("{", paste(cluster, collapse = ", "), "}")
+}
+
+hclust_distr = function(words){
+  groups = lapply(words, function(x) x)
+  result = data.frame(matrix(0, nrow = length(words), ncol = length(words)))
+  result[1,] = c(1:length(words))
+  dists = numeric(length(words))
+  for(i in 1:(length(words)-1)){
+    widths = matrix(data = Inf, nrow = length(groups) , ncol = length(groups))
+    for(y in 1:(length(groups)-1)){
+      widths[,y] = c(rep(Inf, y), sapply((y+1):length(groups), function(x)  getClusterWidth(c(groups[[y]], groups[[x]]))))
+    }
+    bestMerge = which(widths == min(widths), arr.ind = T)[1,]
+    print(paste0("Merging groups: ", clusterToString(groups[[bestMerge[1]]]), clusterToString(groups[[bestMerge[2]]])))
+    groups = mergeClusters(groups, bestMerge[1], bestMerge[2])
+    result[i + 1, ] = clustersToRow(groups, words)
+    dists[i + 1] = min(widths)
+  }
+  colnames(result) = words
+  result = result %>% mutate(dist = dists)
+  result
+}
+```
+
+
+```{r}
+N = 10
+words = wordFreq$text[1:N]
+#nalysis = hclust_distr(c("of","a","to","that","it","'s","and","you","I","the"))
+#analysis = hclust_distr(c("of","a","to","that","it","'s","and","you","I","the"))
+analysis = hclust_distr(words)
+analysis = hclust_distr(c("hear", "see", "think", "know", "person", "I", "she", "he", "we", "dog", "car"))
+analysis = hclust_distr(c("I", "we", "me", "us"))
+analysis = hclust_distr(sbc_top200)
+
+getDendroFromData(analysis %>% mutate(iter = 1:nrow(analysis)))
+```
+
+
+
+Import words to get overlap data for:
+
+
+```{r}
+marginal = read_csv("/home/ryan/Staircases/marginal_words.csv")
+top = read_csv("/home/ryan/Staircases/top_100_words_sbc.csv")
+
+```
+
+Get counts and percentages for overlaps and lag:
+```{r}
+sbc_marginals_long = sbc %>% filter(sbc$text_lower %in% marginal$word) %>% group_by(text_lower, isOverlap, isLag) %>% count() %>% ungroup() %>% rename(text = text_lower)
+sbc_marginals = sbc_marginals_long %>% pivot_wider(id_cols = "text", names_from = c("isOverlap", "isLag"), values_from = "n")
+#FALSE_FALSE = no overlap, no lag
+sbc_marginals = sbc_marginals %>% mutate(across(contains("_"), function(x) replace_na(x, 0)))
+sbc_marginals = sbc_marginals %>% mutate(total = FALSE_FALSE + FALSE_TRUE + TRUE_FALSE + TRUE_TRUE) %>%
+  mutate(lag_perc = (FALSE_TRUE + TRUE_TRUE) / total * 100, overlap_perc = (TRUE_FALSE + TRUE_TRUE) / total * 100)
+```
+
+Plot overlap and lag:
+```{r}
+sbc_marginals = sbc_marginals %>% left_join(marginal, by = c("text" = "word"))
+sbc_marginals = sbc_marginals %>% mutate(colType = case_when(str_detect(text, "@") ~ "Laughter", 
+                                                             pos == "VOC" ~ "Vocalism",
+                                                             str_detect(pos, "INTJ") ~ "Interjection",
+                                                             T ~ "Other"))
+sbc_marginals = sbc_marginals %>% filter(total >= 50)
+ggplot(sbc_marginals, aes(x = overlap_perc, y = lag_perc, col = colType)) + ggtitle("Percentage of overlap and lengthened tokens per type") + geom_point() + geom_text(aes(label = text)) + xlab("Percentage of tokens that are overlapped") + ylab("Percentage of tokens that are lengthened") + labs(col = "Type") + scale_color_manual(values = c("Vocalism" = "#800080", "Laughter" = "#FFA500", "Interjection" = "#FF0000", "Other" = "#0000FF"))
+
+ggsave("overlap_lag_marginal.png", height = 15, width = 15)
+```
+
+
+Get counts and percentages for overlaps and lag (for top words):
+```{r}
+sbc_tops_long = sbc %>% filter(sbc$text_lower %in% top$Wordform) %>% group_by(text_lower, isOverlap, isLag) %>% count() %>% ungroup() %>% rename(text = text_lower)
+sbc_tops = sbc_tops_long %>% pivot_wider(id_cols = "text", names_from = c("isOverlap", "isLag"), values_from = "n")
+#FALSE_FALSE = no overlap, no lag
+sbc_tops= sbc_tops %>% mutate(across(contains("_"), function(x) replace_na(x, 0)))
+sbc_tops = sbc_tops %>% mutate(total = FALSE_FALSE + FALSE_TRUE + TRUE_FALSE + TRUE_TRUE) %>%
+  mutate(lag_perc = (FALSE_TRUE + TRUE_TRUE) / total * 100, overlap_perc = (TRUE_FALSE + TRUE_TRUE) / total * 100)
+```
+
+
+Plot overlap and lag:
+```{r}
+sbc_tops = sbc_tops %>% left_join(top, by = c("text" = "Wordform")) %>%
+  mutate(colType = case_when(str_detect(text, "@") ~ "Laughter", 
+                             PartOfSpeech == "VOC" ~ "Vocalism",
+                             str_detect(PartOfSpeech, "INTJ") ~ "Interjection",
+                             T ~ "Other"))
+sbc_tops = sbc_tops %>% filter(total >= 50)
+ggplot(sbc_tops, aes(x = overlap_perc, y = lag_perc, col = colType)) + ggtitle("Percentage of overlap and lengthened tokens per type") + geom_point() + geom_text(aes(label = text)) + xlab("Percentage of tokens that are overlapped") + ylab("Percentage of tokens that are lengthened") + labs(col = "Type") + scale_color_manual(values = c("Vocalism" = "#800080", "Laughter" = "#FFA500", "Interjection" = "#FF0000", "Other" = "#0000FF"))
+
+ggsave("overlap_lag_top.png", height = 15, width = 15)
+```
+
+```{r}
+
+cluster_dendro = getDendroFromData(analysis %>% mutate(iter = 1:nrow(analysis))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave("cluster_dendro.png", cluster_dendro, width = 20, height = 8, units = "in")
+```
