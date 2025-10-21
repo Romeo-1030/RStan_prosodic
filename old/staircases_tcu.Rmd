@@ -1,0 +1,144 @@
+
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Import the SBC:
+```{r}
+library(tidyverse)
+library(tidyr)
+library(rlang)
+library(glue)
+load(here("data", "sbc.Rdata")) # Change to RDS later
+```
+
+Standardise spellings and capitalisation:
+```{r}
+sbc = sbc %>% mutate(text = case_when(
+  text == "uh-" ~ "uh",
+  text == "hm" ~ "hmm",
+  text == "m" ~"mm",
+  text == "hm-m" ~ "hm-mm",
+  text == "ooh" ~ "oo",
+  text == "aa" ~"ah",
+  text == "nyah" ~ "nya",
+  T ~ text
+))
+sbc = sbc %>% mutate(text_lower = case_when(kind == "word" ~ tolower(text),
+                                            T ~ text))
+```
+
+
+Juilland's D calculations:
+```{r}
+#Prepare frequency table
+sbc_word_perdoc_freq = sbc %>% group_by(docId, text_lower) %>%
+  filter(kind == "word", str_detect(text_lower, "[a-z]")) %>%
+  filter(!text_lower %in% c("b","c","d","e","f","g","h","j","k","l","m","n","o","p","q","qu","r","s","t","u","v","w","x","y","z","ph","th","ch","sh","bl","br","cl","cr","dr","fl","fr","gl","gr","kn","pl","pr","sc","scr","sk","sl","sm","sn","sp","spr","st","str","sw","tr","wh","wr")) %>%
+  count(.drop = F) %>% ungroup %>%
+  pivot_wider(names_from = c("docId"), values_from = n)
+
+sbc_word_perdoc_freq = sbc_word_perdoc_freq %>%
+  replace_na(lapply(1:60, function(x) 0) %>%
+               `names<-`(colnames(sbc_word_perdoc_freq)[-1]))
+
+#Julliand's U calculation
+sbc_word_perdoc_freq = sbc_word_perdoc_freq %>%
+  mutate(sd = apply(as.matrix(sbc_word_perdoc_freq[,-1]), 1, function(x) sd(x)),
+         vbar = apply(as.matrix(sbc_word_perdoc_freq[,-1]), 1, function(x) mean(x))) %>%
+  mutate(D = 1 - (sd / vbar) / sqrt(60-1)) %>%
+  mutate(U = D * vbar * 60)
+
+#Getting wordlists
+sbc_word_perdoc_freq = sbc_word_perdoc_freq %>%
+  mutate(Urank = nrow(sbc_word_perdoc_freq) - rank(U) + 1)
+sbc_top100 = sbc_word_perdoc_freq %>% filter(Urank <= 100) %>% pull(text_lower)
+sbc_top200 = sbc_word_perdoc_freq %>% filter(Urank <= 200) %>% pull(text_lower)
+sbc_top300 = sbc_word_perdoc_freq %>% filter(Urank <= 300) %>% pull(text_lower)
+sbc_top500 = sbc_word_perdoc_freq %>% filter(Urank <= 500) %>% pull(text_lower)
+write_csv(sbc_word_perdoc_freq %>% arrange(Urank), here("data", "sbc_word_perdoc_freq.csv"))
+saveRDS(sbc_top200, here("data", "sbc_top200.rds"))
+```
+
+## Heatmap visualisation
+
+Get fixed unit length values:
+```{r}
+sbc = sbc %>% group_by(docId, unitId) %>% mutate(unitWordLen = sum(kind == "word")) %>% ungroup
+sbc = sbc %>% group_by(docId, pSentSeq) %>%
+    mutate(pSentWordLen = sum(kind == "word")) %>%
+    mutate(pSentPlace = put_values_in_true(pythonlike_range(pSentWordLen[1]), kind == "word")) %>% ungroup
+sbc = sbc %>% group_by(docId, pSentSeq) %>% mutate(pSentUnitLen = length(unique(unitId))) %>% ungroup
+
+put_values_in_true = function(vals, bool_vec, default_val = 0){
+    if(sum(bool_vec) != length(vals)){
+        stop(glue("{vec_to_str(vals)} does not fit in {vec_to_str(bool_vec)}"))
+    }
+    new_vec = rep(default_val, length(bool_vec))
+    new_vec[bool_vec] = vals
+    new_vec
+}
+
+pythonlike_range = function(max){
+    if(max == 0){
+        numeric(0)
+    } else {
+        1:max
+    }
+}
+
+
+vec_to_str = function(vec) paste(as.character(vec), collapse = ", ")
+```
+
+
+Code for producing heatmaps:
+```{r}
+get_staircase = function(targetWord, placeCol, lenCol, numbers = T, title_suffix = "", y_text = "IU length", x_text = "Place", max_len = 20){
+  counts = sbc %>% filter(text_lower == targetWord) %>%
+    group_by({{placeCol}}, {{lenCol}}) %>%
+    count %>% ungroup %>%
+    filter({{lenCol}} < max_len, !is.na({{placeCol}}), !is.na({{lenCol}}))
+  graph = ggplot(counts, aes(x = {{placeCol}}, y = {{lenCol}})) +
+    ggtitle(glue("{targetWord} {title_suffix}")) +
+    ylab(y_text) +
+    xlab(x_text) +
+    geom_tile(aes(fill = n), color='white') +
+    scale_fill_gradient(low = 'white', high = 'darkblue') + #theme_grey() +
+    theme(axis.text.x=element_text(),
+          axis.ticks=element_line(),
+          axis.line=element_blank(),
+          panel.border=element_blank(),
+          panel.grid.minor=element_line(color='#FFFFFF', linetype= 1, size = .5),
+          panel.grid.major=element_blank(),
+          legend.spacing.x = unit(7, 'mm')) +
+    scale_y_continuous(breaks = 1:max_len, minor_breaks = seq(.5,max_len + .5,1), limits = c(.5, max_len)) +
+    scale_x_continuous(breaks = 1:max_len, minor_breaks = seq(.5,max_len + .5,1), limits = c(0.5, max_len)) +
+    geom_vline(xintercept = .5) + geom_hline(yintercept = .5) + geom_abline(intercept = -1, slope = 1)
+  if(numbers) graph = graph + geom_text(aes(label = n))
+  graph
+}
+
+
+```
+
+```{r}
+get_staircase("person", place, unitWordLen)
+get_staircase("oh", place, unitWordLen)
+```
+
+
+```{r}
+get_staircase("person", pSentPlace, pSentWordLen, y_text = "TCU length", x_text = "Place in TCU", max_len = 40)
+get_staircase("people", pSentPlace, pSentWordLen, y_text = "TCU length", x_text = "Place in TCU", max_len = 40)
+get_staircase("oh", pSentPlace, pSentWordLen, max_len = 40)
+```
+
+```{r}
+for(word in sbc_top200){
+    get_staircase(word, pSentPlace, pSentWordLen, y_text = "TCU length", x_text = "Place in TCU", max_len = 40)
+    ggsave(here("output", "staircase_word_in_tcu", glue("{word}.png")))
+    ggsave(here("output", "staircase_word_in_tcu", glue("{word}.svg")))
+}
+```
