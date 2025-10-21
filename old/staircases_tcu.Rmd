@@ -70,6 +70,7 @@ sbc = sbc %>% group_by(docId, pSentSeq) %>%
     mutate(pSentWordLen = sum(kind == "word")) %>%
     mutate(pSentPlace = put_values_in_true(pythonlike_range(pSentWordLen[1]), kind == "word")) %>% ungroup
 sbc = sbc %>% group_by(docId, pSentSeq) %>% mutate(pSentUnitLen = length(unique(unitId))) %>% ungroup
+sbc = sbc %>% group_by(docId, pSentSeq) %>% mutate(pSentUnitPlace = rank_unique(unitId)) %>% ungroup
 
 put_values_in_true = function(vals, bool_vec, default_val = 0){
     if(sum(bool_vec) != length(vals)){
@@ -86,6 +87,13 @@ pythonlike_range = function(max){
     } else {
         1:max
     }
+}
+
+#int_vec needs to be sorted, smallest to largest.
+rank_unique = function(int_vec){
+    unique_vals = unique(int_vec)
+    ranks = rank(unique_vals, ties.method = "first")
+    sapply(int_vec, \(x) ranks[which(unique_vals == x)])
 }
 
 
@@ -135,10 +143,26 @@ get_staircase("people", pSentPlace, pSentWordLen, y_text = "TCU length", x_text 
 get_staircase("oh", pSentPlace, pSentWordLen, max_len = 40)
 ```
 
+
+```{r}
+get_staircase("person", pSentUnitPlace, pSentUnitLen, y_text = "TCU length", x_text = "Place in TCU", max_len = 25)
+get_staircase("people", pSentUnitPlace, pSentUnitLen, y_text = "TCU length", x_text = "Place in TCU", max_len = 25)
+get_staircase("oh", pSentUnitPlace, pSentUnitLen, max_len = 25)
+```
+
 ```{r}
 for(word in sbc_top200){
     get_staircase(word, pSentPlace, pSentWordLen, y_text = "TCU length", x_text = "Place in TCU", max_len = 40)
     ggsave(here("output", "staircase_word_in_tcu", glue("{word}.png")))
     ggsave(here("output", "staircase_word_in_tcu", glue("{word}.svg")))
+}
+```
+
+
+```{r}
+for(word in sbc_top200){
+    get_staircase(word, pSentUnitPlace, pSentUnitLen, y_text = "TCU length", x_text = "Place in TCU", max_len = 25)
+    ggsave(here("output", "staircase_unit_in_tcu", glue("{word}.png")))
+    ggsave(here("output", "staircase_unit_in_tcu", glue("{word}.svg")))
 }
 ```
