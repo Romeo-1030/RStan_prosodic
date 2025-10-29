@@ -1,0 +1,427 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Import the SBC:
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(rlang)
+library(glue)
+library(here)
+```
+
+```{r}
+new_spacy_parse_filepaths = list.files(here("data", "new_spacy_parses"))
+sbc = new_spacy_parse_filepaths %>%
+  purrr::map(\(x) read_csv(here("data", "new_spacy_parses", x))) %>%
+  bind_rows()
+```
+
+Standardise spellings and capitalisation:
+
+```{r}
+sbc = sbc %>%
+  mutate(
+    text = case_when(
+      text == "uh-" ~ "uh",
+      text == "hm" ~ "hmm",
+      text == "m" ~ "mm",
+      text == "hm-m" ~ "hm-mm",
+      text == "ooh" ~ "oo",
+      text == "aa" ~ "ah",
+      text == "nyah" ~ "nya",
+      T ~ text
+    )
+  )
+sbc = sbc %>%
+  mutate(text_lower = case_when(kind == "word" ~ tolower(text), T ~ text))
+
+sbc_top200 = readRDS(here("data", "sbc_top200.rds"))
+```
+
+## Heatmap visualisation
+
+```{r}
+put_values_in_true = function(vals, bool_vec, default_val = 0) {
+  if (sum(bool_vec) != length(vals)) {
+    stop(glue("{vec_to_str(vals)} does not fit in {vec_to_str(bool_vec)}"))
+  }
+  new_vec = rep(default_val, length(bool_vec))
+  new_vec[bool_vec] = vals
+  new_vec
+}
+
+pythonlike_range = function(max) {
+  if (max == 0) {
+    numeric(0)
+  } else {
+    1:max
+  }
+}
+
+#int_vec needs to be sorted, smallest to largest.
+rank_unique = function(int_vec) {
+  unique_vals = unique(int_vec)
+  ranks = rank(unique_vals, ties.method = "first")
+  sapply(int_vec, \(x) ranks[which(unique_vals == x)])
+}
+```
+
+Get fixed unit length values:
+
+```{r}
+sbc = sbc %>%
+  group_by(docId, unitId) %>%
+  mutate(unitWordLen = sum(kind == "word")) %>%
+  ungroup
+sbc = sbc %>%
+  group_by(docId, utteranceSeq) %>%
+  mutate(utteranceWordLen = sum(kind == "word")) %>%
+  mutate(
+    utterancePlace = put_values_in_true(
+      pythonlike_range(utteranceWordLen[1]),
+      kind == "word"
+    )
+  ) %>%
+  ungroup
+
+sbc = sbc %>%
+  group_by(docId, utteranceSeq) %>%
+  mutate(utteranceUnitLen = length(unique(unitId))) %>%
+  mutate(utteranceUnitOrder = rank_unique(unitId)) %>%
+  ungroup
+
+vec_to_str = function(vec) paste(as.character(vec), collapse = ", ")
+```
+
+Code for producing heatmaps:
+
+```{r}
+get_staircase = function(
+  targetWord,
+  placeCol,
+  lenCol,
+  sbc,
+  numbers = T,
+  title_suffix = "",
+  y_text = "IU length",
+  x_text = "Place",
+  max_len = 20
+) {
+  counts = sbc %>%
+    filter(text_lower == targetWord) %>%
+    group_by({{ placeCol }}, {{ lenCol }}) %>%
+    count %>%
+    ungroup %>%
+    filter({{ lenCol }} < max_len, !is.na({{ placeCol }}), !is.na({{ lenCol }}))
+
+  graph = ggplot(counts, aes(x = {{ placeCol }}, y = {{ lenCol }})) +
+    ggtitle(glue("{targetWord} {title_suffix}")) +
+    ylab(y_text) +
+    xlab(x_text) +
+    geom_tile(aes(fill = n), color = 'white') +
+    scale_fill_gradient(low = 'white', high = 'darkblue') + #theme_grey() +
+    theme(
+      axis.text.x = element_text(),
+      axis.ticks = element_line(),
+      axis.line = element_blank(),
+      panel.border = element_blank(),
+      panel.grid.minor = element_line(
+        color = '#FFFFFF',
+        linetype = 1,
+        size = .5
+      ),
+      panel.grid.major = element_blank(),
+      legend.spacing.x = unit(7, 'mm')
+    ) +
+    scale_y_continuous(
+      breaks = 1:max_len,
+      minor_breaks = seq(.5, max_len + .5, 1),
+      limits = c(.5, max_len)
+    ) +
+    scale_x_continuous(
+      breaks = 1:max_len,
+      minor_breaks = seq(.5, max_len + .5, 1),
+      limits = c(0.5, max_len)
+    ) +
+    geom_vline(xintercept = .5) +
+    geom_hline(yintercept = .5) +
+    geom_abline(intercept = -1, slope = 1)
+  if (numbers) {
+    graph = graph + geom_text(aes(label = n))
+  }
+  graph
+}
+
+
+```
+
+
+```{r}
+for (word in sbc_top200) {
+  get_staircase(
+    word,
+    utterancePlace,
+    utteranceWordLen,
+    y_text = "TCU length",
+    x_text = "Place in TCU",
+    max_len = 40,
+    sbc = sbc
+  )
+  ggsave(here("output", "staircase_word_in_tcu", glue("{word}.png")))
+  ggsave(here("output", "staircase_word_in_tcu", glue("{word}.svg")))
+}
+```
+
+```{r}
+for (word in sbc_top200) {
+  get_staircase(
+    word,
+    utteranceUnitPlace,
+    utteranceUnitLen,
+    y_text = "TCU length",
+    x_text = "Place in TCU",
+    max_len = 25
+  )
+  ggsave(here("output", "staircase_unit_in_tcu", glue("{word}.png")))
+  ggsave(here("output", "staircase_unit_in_tcu", glue("{word}.svg")))
+}
+```
+
+## Clauses
+
+### Extraction
+
+```{r}
+# starts: tf vector of whether a word starts a sentence
+sentence_id_from_starts = function(df, starts, ignores) {
+  sentenceIDs = rep(NA, nrow(df))
+  currentID = 0L
+  for (i in 1:nrow(df)) {
+    if (!ignores[i]) {
+      #eventually should be ignores
+      next
+    } else if (!is.na(starts[i]) & starts[i]) {
+      currentID = currentID + 1L
+      sentenceIDs[i] = currentID
+    } else {
+      sentenceIDs[i] = currentID
+    }
+  }
+  sentenceIDs
+}
+sent1 = sbc[1:31, ]
+sentence_id_from_starts(sent1, sent1$is_spaCy_start, sent1$spaCy_ignored)
+```
+
+```{r}
+climb_up_until_pos = function(sentence, orig_id, mother_type = "VERB") {}
+
+```
+
+```{r}
+get_all_dependents_and_self = function(df, curr_head) {
+  all_dependents = c()
+  queue = df %>% dplyr::filter(df$head == curr_head) %>% pull(spacy_id)
+
+  done = c()
+
+  while (length(queue) > 0) {
+    current_id = queue[1]
+    done = c(done, current_id)
+    queue = queue[-1]
+
+    all_dependents = c(all_dependents, current_id)
+    children_ids = df %>%
+      dplyr::filter(df$head == current_id) %>%
+      pull(spacy_id)
+    queue = setdiff(c(queue, children_ids), done)
+  }
+
+  unique(sort(c(all_dependents, curr_head)))
+}
+get_all_dependents_and_self(sent1, 2)
+
+```
+
+
+```{r}
+climb_up_until_verb = function(df, start_id) {
+  current_id = start_id
+
+  while (current_id != 0) {
+    current_row = df %>% filter(spacy_id == current_id)
+    if (nrow(current_row) == 0) {
+      warning(paste("ID", current_id, "not found in the parse data frame."))
+      return(NULL)
+    }
+
+    head_id = current_row$head[1]
+    head_row = df %>% filter(spacy_id == head_id)
+    if (nrow(head_row) == 0) {
+      warning(paste("Head ID", head_id, "not found in the parse data frame."))
+      return(NULL)
+    }
+
+    if (stringr::str_starts(head_row$POS_Penn[1], "VB")) {
+      return(head_id)
+    }
+
+    # At ROOT already, still no verb in sight
+    if (current_id == head_id) {
+      break
+    }
+    current_id = head_id
+  }
+
+  return(NULL)
+}
+climb_up_until_verb(sent1, 2)
+```
+
+```{r}
+
+get_clause_positions = function(df, curr_sent) {
+  curr_row_idx = which(df$sentId == curr_sent)
+  curr_rows = df[curr_row_idx, ]
+
+  v2d = vector(mode = "list", length = max(curr_rows$spacy_id) + 1)
+
+  for (i in 1:nrow(curr_rows)) {
+    curr_id = curr_rows$spacy_id[i]
+    curr_head = climb_up_until_verb(curr_rows, curr_id)
+
+    if (!is.null(curr_head)) {
+      curr_rows$clauseHeadId[i] = curr_head
+      if (is.null(v2d[[curr_head + 1]])) {
+        curr_clausemates = get_all_dependents_and_self(curr_rows, curr_head)
+        v2d[[curr_head + 1]] = curr_clausemates
+      } else {
+        curr_clausemates = v2d[[curr_head + 1]]
+      }
+
+      curr_rows$clauseOrder[i] = which(curr_clausemates == curr_id)
+      curr_rows$clauseBack[i] = length(curr_clausemates) -
+        curr_rows$clauseOrder[i] +
+        1
+    } else {
+      # Extraclausal cases
+      curr_rows$clauseHeadId[i] = NA
+    }
+  }
+
+  df$clauseOrder[curr_row_idx] = curr_rows$clauseOrder
+  df$clauseBack[curr_row_idx] = curr_rows$clauseBack
+  df$clauseHeadId[curr_row_idx] = curr_rows$clauseHeadId
+  df
+}
+
+after_sent1_retrieved = get_clause_positions(df, 1)
+```
+
+```{r}
+get_clause_info_for_utt = function(df) {
+  df = df %>%
+    mutate(
+      clauseHeadId = rep(NA, nrow(df)),
+      clauseOrder = rep(NA, nrow(df)),
+      clauseBack = rep(NA, nrow(df))
+    )
+
+  sentenceIds = sentence_id_from_starts(df, df$is_spaCy_start, df$spaCy_ignored)
+  df$sentId = sentenceIds
+  for (sent in unique(sentenceIds)) {
+    if (is.na(sent)) {
+      next
+    }
+    df = get_clause_positions(df, sent)
+  }
+  df
+}
+final_df = get_clause_info_for_utt(df %>% filter(utteranceSeq == 6))
+```
+
+
+```{r}
+get_clause_info_for_doc = function(df) {
+  df = df %>%
+    mutate(
+      clauseHeadId = rep(NA, nrow(df)),
+      clauseOrder = rep(NA, nrow(df)),
+      clauseBack = rep(NA, nrow(df))
+    )
+  utts = unique(df$utteranceSeq)
+  for (utt in utts) {
+    print(paste("Procesusing utt ", utt))
+    curr_row_idx = which(df$utteranceSeq == utt)
+    clause_info = get_clause_info_for_utt(df %>% filter(utteranceSeq == utt))
+    df$clauseOrder[curr_row_idx] = clause_info$clauseOrder
+    df$clauseBack[curr_row_idx] = clause_info$clauseBack
+    df$clauseHeadId[curr_row_idx] = clause_info$clauseHeadId
+  }
+  df
+}
+doc_df = get_clause_info_for_doc(sbc %>% filter(docId == "sbc023"))
+```
+
+```{r}
+get_clause_info_for_sbc = function(df) {
+  df = df %>%
+    mutate(
+      clauseHeadId = rep(NA, nrow(df)),
+      clauseOrder = rep(NA, nrow(df)),
+      clauseBack = rep(NA, nrow(df))
+    )
+  docs = unique(df$docId)
+  for (doc in docs) {
+    print(paste("Processing doc", doc))
+    curr_row_idx = which(df$docId == doc)
+    clause_info = get_clause_info_for_doc(df %>% filter(docId == doc))
+    df$clauseOrder[curr_row_idx] = clause_info$clauseOrder
+    df$clauseBack[curr_row_idx] = clause_info$clauseBack
+    df$clauseHeadId[curr_row_idx] = clause_info$clauseHeadId
+  }
+  df
+}
+doc_df = get_clause_info_for_sbc(sbc)
+```
+
+```{r}
+doc_df = doc_df %>% mutate(clauseLength = clauseBack + clauseOrder - 1) %>% mutate(text_lower = tolower(text))
+```
+```{r}
+sbc = doc_df
+sbc = sbc %>% mutate(text_lower = tolower(text))
+```
+
+
+```{r}
+get_staircase(
+  "to",
+  clauseOrder,
+  clauseLength,
+  y_text = "Clause length",
+  x_text = "Place in clause",
+  max_len = 40,
+  sbc = doc_df
+)
+```
+
+```{r}
+for (word in sbc_top200) {
+  get_staircase(
+    word,
+    clauseOrder,
+    clauseLength,
+    y_text = "Clause length",
+    x_text = "Place in clause",
+    max_len = 40,
+    sbc = doc_df
+  )
+  ggsave(here("output", "staircase_word_in_tcu", glue("{word}.png")))
+  ggsave(here("output", "staircase_word_in_tcu", glue("{word}.svg")))
+}
+```

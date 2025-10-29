@@ -12,44 +12,117 @@ library(tidyr)
 library(rlang)
 # setwd("G:\\共用雲端硬碟\\Prosody & Units in Dialogue\\Staircases")
 #sbc = read_csv("G:/共用雲端硬碟/Prosody & Units in Dialogue/Staircases/sbc_2.0.5.csv", col_types = c("icinnnnnnciiciiiiccccccililnnnlccccclcllicccicicicccccciciciici"))
-sbc = read_csv("sbc_2.0.5.csv", col_types = c("icinnnnnnciiciiiiccccccililnnnlccccclcllicccicicicccccciciciici"))
+sbc = read_csv(
+  "sbc_2.0.5.csv",
+  col_types = c(
+    "icinnnnnnciiciiiiccccccililnnnlccccclcllicccicicicccccciciciici"
+  )
+)
 ```
 
 Standardise spellings and capitalisation:
 ```{r}
-sbc = sbc %>% mutate(text = case_when(
-  text == "uh-" ~ "uh",
-  text == "hm" ~ "hmm",
-  text == "m" ~"mm",
-  text == "hm-m" ~ "hm-mm",
-  text == "ooh" ~ "oo",
-  text == "aa" ~"ah",
-  text == "nyah" ~ "nya",
-  T ~ text
-))
-sbc = sbc %>% mutate(text_lower = case_when(kind == "word" ~ tolower(text),
-                                            T ~ text))
+sbc = sbc %>%
+  mutate(
+    text = case_when(
+      text == "uh-" ~ "uh",
+      text == "hm" ~ "hmm",
+      text == "m" ~ "mm",
+      text == "hm-m" ~ "hm-mm",
+      text == "ooh" ~ "oo",
+      text == "aa" ~ "ah",
+      text == "nyah" ~ "nya",
+      T ~ text
+    )
+  )
+sbc = sbc %>%
+  mutate(text_lower = case_when(kind == "word" ~ tolower(text), T ~ text))
 ```
 
 
 Juilland's D calculations:
 ```{r}
 #Prepare frequency table
-sbc_word_perdoc_freq = sbc %>% group_by(docId, text_lower) %>%
+sbc_word_perdoc_freq = sbc %>%
+  group_by(docId, text_lower) %>%
   filter(kind == "word", str_detect(text_lower, "[a-z]")) %>%
-  filter(!text_lower %in% c("b","c","d","e","f","g","h","j","k","l","m","n","o","p","q","qu","r","s","t","u","v","w","x","y","z","ph","th","ch","sh","bl","br","cl","cr","dr","fl","fr","gl","gr","kn","pl","pr","sc","scr","sk","sl","sm","sn","sp","spr","st","str","sw","tr","wh","wr")) %>%
-  count(.drop = F) %>% ungroup %>%
+  filter(
+    !text_lower %in%
+      c(
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "j",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "q",
+        "qu",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y",
+        "z",
+        "ph",
+        "th",
+        "ch",
+        "sh",
+        "bl",
+        "br",
+        "cl",
+        "cr",
+        "dr",
+        "fl",
+        "fr",
+        "gl",
+        "gr",
+        "kn",
+        "pl",
+        "pr",
+        "sc",
+        "scr",
+        "sk",
+        "sl",
+        "sm",
+        "sn",
+        "sp",
+        "spr",
+        "st",
+        "str",
+        "sw",
+        "tr",
+        "wh",
+        "wr"
+      )
+  ) %>%
+  count(.drop = F) %>%
+  ungroup %>%
   pivot_wider(names_from = c("docId"), values_from = n)
 
 sbc_word_perdoc_freq = sbc_word_perdoc_freq %>%
-  replace_na(lapply(1:60, function(x) 0) %>%
-               `names<-`(colnames(sbc_word_perdoc_freq)[-1]))
+  replace_na(
+    lapply(1:60, function(x) 0) %>%
+      `names<-`(colnames(sbc_word_perdoc_freq)[-1])
+  )
 
 #Julliand's U calculation
 sbc_word_perdoc_freq = sbc_word_perdoc_freq %>%
-  mutate(sd = apply(as.matrix(sbc_word_perdoc_freq[,-1]), 1, function(x) sd(x)),
-         vbar = apply(as.matrix(sbc_word_perdoc_freq[,-1]), 1, function(x) mean(x))) %>%
-  mutate(D = 1 - (sd / vbar) / sqrt(60-1)) %>%
+  mutate(
+    sd = apply(as.matrix(sbc_word_perdoc_freq[, -1]), 1, function(x) sd(x)),
+    vbar = apply(as.matrix(sbc_word_perdoc_freq[, -1]), 1, function(x) mean(x))
+  ) %>%
+  mutate(D = 1 - (sd / vbar) / sqrt(60 - 1)) %>%
   mutate(U = D * vbar * 60)
 
 #Getting wordlists
@@ -66,34 +139,58 @@ write_csv(sbc_word_perdoc_freq %>% arrange(Urank), "sbc_word_perdoc_freq.csv")
 
 Get fixed unit length values:
 ```{r}
-sbc = sbc %>% group_by(docId, unitId) %>% mutate(unitWordLen = sum(kind == "word")) %>% ungroup
+sbc = sbc %>%
+  group_by(docId, unitId) %>%
+  mutate(unitWordLen = sum(kind == "word")) %>%
+  ungroup
 ```
 
 Code for producing heatmaps:
 ```{r}
 #library(ggExtra)
 
-get_starfish = function(targetWord, numbers = T){
-  counts = sbc %>% filter(text_lower == targetWord) %>%
+get_starfish = function(targetWord, numbers = T) {
+  counts = sbc %>%
+    filter(text_lower == targetWord) %>%
     group_by(place, unitWordLen) %>%
-    count %>% ungroup %>%
+    count %>%
+    ungroup %>%
     filter(unitWordLen < 20, !is.na(place), !is.na(unitWordLen))
   graph = ggplot(counts, aes(place, unitWordLen)) +
     ggtitle(paste0(targetWord)) +
     ylab('IU length') +
     xlab('Place') +
-    geom_tile(aes(fill = n), color='white') +
+    geom_tile(aes(fill = n), color = 'white') +
     scale_fill_gradient(low = 'white', high = 'darkblue') + #theme_grey() +
-    theme(axis.text.x=element_text(),
-          axis.ticks=element_line(),
-          axis.line=element_blank(),
-          panel.border=element_blank(),
-          panel.grid.minor=element_line(color='#FFFFFF', linetype= 1, size = .5),
-          panel.grid.major=element_blank(),
-          legend.spacing.x = unit(7, 'mm')) +
-    scale_y_continuous(breaks = 1:20, minor_breaks = seq(.5,20.5,1), limits = c(.5, 20)) +
-    scale_x_continuous(breaks = 1:20, minor_breaks = seq(.5,20.5,1), limits = c(0.5, 20)) + geom_vline(xintercept = .5) + geom_hline(yintercept = .5) + geom_abline(intercept = -1, slope = 1)
-  if(numbers) graph = graph + geom_text(aes(label = n))
+    theme(
+      axis.text.x = element_text(),
+      axis.ticks = element_line(),
+      axis.line = element_blank(),
+      panel.border = element_blank(),
+      panel.grid.minor = element_line(
+        color = '#FFFFFF',
+        linetype = 1,
+        size = .5
+      ),
+      panel.grid.major = element_blank(),
+      legend.spacing.x = unit(7, 'mm')
+    ) +
+    scale_y_continuous(
+      breaks = 1:20,
+      minor_breaks = seq(.5, 20.5, 1),
+      limits = c(.5, 20)
+    ) +
+    scale_x_continuous(
+      breaks = 1:20,
+      minor_breaks = seq(.5, 20.5, 1),
+      limits = c(0.5, 20)
+    ) +
+    geom_vline(xintercept = .5) +
+    geom_hline(yintercept = .5) +
+    geom_abline(intercept = -1, slope = 1)
+  if (numbers) {
+    graph = graph + geom_text(aes(label = n))
+  }
   graph
 }
 
@@ -110,9 +207,11 @@ get_starfish("oh")
 Getting the response:
 
 ```{r}
-suppresNonfinal = function(x){
-  if(length(x) == 1) x else {
-    x[1:(length(x)-1)] = NA
+suppresNonfinal = function(x) {
+  if (length(x) == 1) {
+    x
+  } else {
+    x[1:(length(x) - 1)] = NA
     x
   }
 }
@@ -120,7 +219,7 @@ suppresNonfinal = function(x){
 predict_df = sbc %>%
   group_by(docId, unitId) %>%
   mutate(unitEndnote = endNote[!is.na(endNote)][1]) %>%
-  filter(kind == "word") %>% 
+  filter(kind == "word") %>%
   mutate(nextEndnote = suppresNonfinal(unitEndnote))
 ```
 
@@ -129,24 +228,62 @@ Getting preceding, following and unit-initial words:
 
 ```{r}
 predict_df = predict_df %>%
-  mutate(text_trimmed = case_when(text_lower %in% sbc_top200 ~ text_lower,
-                                  T ~ "<UNK>")) %>%
-  mutate(curr = lag(text_trimmed, 1L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         prev1 = lag(text_trimmed, 1L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         prev2 = lag(text_trimmed, 2L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         prev3 = lag(text_trimmed, 3L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         prev4 = lag(text_trimmed, 4L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         prev5 = lag(text_trimmed, 5L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         next1 = lead(text_trimmed, 1L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         next2 = lead(text_trimmed, 2L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         next3 = lead(text_trimmed, 3L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         next4 = lead(text_trimmed, 4L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         next5 = lead(text_trimmed, 5L) %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         init1 = text_trimmed[1] %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         init2 = text_trimmed[2] %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         init3 = text_trimmed[3] %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         init4 = text_trimmed[4] %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
-         init5 = text_trimmed[5] %>% replace_na("<NA>") %>% factor(levels = c(sbc_top200, "<UNK>", "<NA>")))
+  mutate(
+    text_trimmed = case_when(
+      text_lower %in% sbc_top200 ~ text_lower,
+      T ~ "<UNK>"
+    )
+  ) %>%
+  mutate(
+    curr = lag(text_trimmed, 1L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    prev1 = lag(text_trimmed, 1L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    prev2 = lag(text_trimmed, 2L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    prev3 = lag(text_trimmed, 3L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    prev4 = lag(text_trimmed, 4L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    prev5 = lag(text_trimmed, 5L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    next1 = lead(text_trimmed, 1L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    next2 = lead(text_trimmed, 2L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    next3 = lead(text_trimmed, 3L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    next4 = lead(text_trimmed, 4L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    next5 = lead(text_trimmed, 5L) %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    init1 = text_trimmed[1] %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    init2 = text_trimmed[2] %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    init3 = text_trimmed[3] %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    init4 = text_trimmed[4] %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>")),
+    init5 = text_trimmed[5] %>%
+      replace_na("<NA>") %>%
+      factor(levels = c(sbc_top200, "<UNK>", "<NA>"))
+  )
 ```
 
 
@@ -159,18 +296,26 @@ prevEndnotes = predict_df %>%
   group_by(docId) %>%
   mutate(prevEndnote = lag(en))
 
-predict_df = predict_df %>% left_join(prevEndnotes %>% select(-en), by = c("docId", "unitId"))
+predict_df = predict_df %>%
+  left_join(prevEndnotes %>% select(-en), by = c("docId", "unitId"))
 
 ```
 
 Turning endnote predictors into factors:
 
 ```{r}
-predict_df = predict_df %>% mutate(across(c(prevEndnote, nextEndnote), function(x){
-  case_when(x == "suspended" ~ "break", is.na(x) ~ "noBoundary", T ~ x)
-}))
+predict_df = predict_df %>%
+  mutate(across(c(prevEndnote, nextEndnote), function(x) {
+    case_when(x == "suspended" ~ "break", is.na(x) ~ "noBoundary", T ~ x)
+  }))
 
-predict_df = predict_df %>% mutate(across(c(prevEndnote, nextEndnote), function(x) factor(x, levels = c("noBoundary", "continuing", "break", "final", "appeal"))))
+predict_df = predict_df %>%
+  mutate(across(c(prevEndnote, nextEndnote), function(x) {
+    factor(
+      x,
+      levels = c("noBoundary", "continuing", "break", "final", "appeal")
+    )
+  }))
 
 ```
 
@@ -184,16 +329,18 @@ predict_df = predict_df %>%
 
 ```{r}
 predict_df = predict_df %>%
-  mutate(currLengthSq = currLength ^ 2)
+  mutate(currLengthSq = currLength^2)
 ```
 
 
 ```{r}
 predict_df = predict_df %>%
-  mutate(preBoundary = nextEndnote != "noBoundary",
-         preClosure = nextEndnote %in% c("final", "appeal"),
-         preContinue = nextEndnote == "continuing",
-         preAppeal = nextEndnote == "appeal")
+  mutate(
+    preBoundary = nextEndnote != "noBoundary",
+    preClosure = nextEndnote %in% c("final", "appeal"),
+    preContinue = nextEndnote == "continuing",
+    preAppeal = nextEndnote == "appeal"
+  )
 ```
 
 
@@ -210,46 +357,73 @@ library(keras)
 Function for fitting IU prediction models in general:
 
 ```{r}
-f1 = function(tp, tn, fp, fn){
+f1 = function(tp, tn, fp, fn) {
   2 * tp / (k_sum(2 * tp, fp, fn))
 }
 
-bound_F1 = custom_metric("bound_F1", function(y_true, y_pred){
+bound_F1 = custom_metric("bound_F1", function(y_true, y_pred) {
   K = backend()
-    f1(tp = k_sum(k_cast(k_all(k_not_equal(y_true[,1], 1), k_less(y_pred[,1], 0.5)), "float16")),
-       tn = k_sum(k_cast(k_all(k_equal(y_true[,1], 1),     k_greater_equal(y_pred[,1], 0.5)), "float16")),
-       fp = k_sum(k_cast(k_all(k_equal(y_true[,1], 1),     k_greater_equal(y_pred[,1], 0.5)), "float16")),
-       fn = k_sum(k_cast(k_all(k_not_equal(y_true[,1], 1), k_less(y_pred[,1], 0.5), "float16"))))
+  f1(
+    tp = k_sum(k_cast(
+      k_all(k_not_equal(y_true[, 1], 1), k_less(y_pred[, 1], 0.5)),
+      "float16"
+    )),
+    tn = k_sum(k_cast(
+      k_all(k_equal(y_true[, 1], 1), k_greater_equal(y_pred[, 1], 0.5)),
+      "float16"
+    )),
+    fp = k_sum(k_cast(
+      k_all(k_equal(y_true[, 1], 1), k_greater_equal(y_pred[, 1], 0.5)),
+      "float16"
+    )),
+    fn = k_sum(k_cast(k_all(
+      k_not_equal(y_true[, 1], 1),
+      k_less(y_pred[, 1], 0.5),
+      "float16"
+    )))
+  )
 })
 
 #The following are not ready yet
-terminate_F1 = custom_metric("terminate_F1", function(y_true, y_pred){
-    f1(tp = sum(y_true == 0 & (y_pred[,3] + y_pred[,4]) >= 0.5),
-       tn = sum(y_true != 0 & (y_pred[,3] + y_pred[,4]) < 0.5),
-       fp = sum(y_true != 0 & (y_pred[,3] + y_pred[,4]) >= 0.5),
-       fn = sum(y_true == 0 & (y_pred[,3] + y_pred[,4]) < 0.5))
+terminate_F1 = custom_metric("terminate_F1", function(y_true, y_pred) {
+  f1(
+    tp = sum(y_true == 0 & (y_pred[, 3] + y_pred[, 4]) >= 0.5),
+    tn = sum(y_true != 0 & (y_pred[, 3] + y_pred[, 4]) < 0.5),
+    fp = sum(y_true != 0 & (y_pred[, 3] + y_pred[, 4]) >= 0.5),
+    fn = sum(y_true == 0 & (y_pred[, 3] + y_pred[, 4]) < 0.5)
+  )
 })
 
 
-continue_F1 = custom_metric("continue_F1", function(y_true, y_pred){
-    f1(tp = sum(y_true == 0 & y_pred[1] >= 0.5),
-       tn = sum(y_true != 0 & y_pred[1] < 0.5),
-       fp = sum(y_true != 0 & y_pred[1] >= 0.5),
-       fn = sum(y_true == 0 & y_pred[1] < 0.5))
+continue_F1 = custom_metric("continue_F1", function(y_true, y_pred) {
+  f1(
+    tp = sum(y_true == 0 & y_pred[1] >= 0.5),
+    tn = sum(y_true != 0 & y_pred[1] < 0.5),
+    fp = sum(y_true != 0 & y_pred[1] >= 0.5),
+    fn = sum(y_true == 0 & y_pred[1] < 0.5)
+  )
 })
 
-final_F1 = custom_metric("appeal_f1", function(y_true, y_pred){
-    f1(tp = sum(y_true == 0 & y_pred[1] < 0.5),
-       tn = sum(y_true != 0 & y_pred[1] < 0.5),
-       fp = sum(y_true != 0 & y_pred[1] < 0.5),
-       fn = sum(y_true == 0 & y_pred[1] < 0.5))
+final_F1 = custom_metric("appeal_f1", function(y_true, y_pred) {
+  f1(
+    tp = sum(y_true == 0 & y_pred[1] < 0.5),
+    tn = sum(y_true != 0 & y_pred[1] < 0.5),
+    fp = sum(y_true != 0 & y_pred[1] < 0.5),
+    fn = sum(y_true == 0 & y_pred[1] < 0.5)
+  )
 })
 
-getDecisions = function(result_df){
+getDecisions = function(result_df) {
   case_when(
     result_df$noBoundary_p >= 0.5 ~ "noBoundary",
-    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) > 0.5 & result_df$final_p >= result_df$appeal_p ~"final",
-    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) > 0.5 & result_df$final_p < result_df$appeal_p ~"appeal",
+    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) >
+      0.5 &
+      result_df$final_p >= result_df$appeal_p ~
+      "final",
+    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) >
+      0.5 &
+      result_df$final_p < result_df$appeal_p ~
+      "appeal",
     result_df$continuing_p > result_df$break_p ~ "continuing",
     T ~ "break"
   )
@@ -257,27 +431,30 @@ getDecisions = function(result_df){
 ```
 
 ```{r}
-fitIUPredictModel = function(predictors,
-                             weight_type = "balanced",
-                             weight_custom = c(1,1,1,1,1),
-                             weight_beta = 0.9999,
-                             weight_inverse_power = 1,
-                             lr_initial = 0.0005,
-                             lr_multiplier = 0.1,
-                             l1_weight = 0.001,
-                             l2_weight = 0.001,
-                             epochs = 5,
-                             batch_size = 32){
+fitIUPredictModel = function(
+  predictors,
+  weight_type = "balanced",
+  weight_custom = c(1, 1, 1, 1, 1),
+  weight_beta = 0.9999,
+  weight_inverse_power = 1,
+  lr_initial = 0.0005,
+  lr_multiplier = 0.1,
+  l1_weight = 0.001,
+  l2_weight = 0.001,
+  epochs = 5,
+  batch_size = 32
+) {
   print("Doing one-hot encoding ...")
-  y = to_categorical(as.integer(predict_df$nextEndnote)-1)
-  x_parts = lapply(predictors, function(x){
-    if(!str_detect(x, "currLength") & !str_detect(x, ":")){
-      to_categorical(as.integer(predict_df[[x]])-1)
-    } else if(str_detect(x, ":")) {
+  y = to_categorical(as.integer(predict_df$nextEndnote) - 1)
+  x_parts = lapply(predictors, function(x) {
+    if (!str_detect(x, "currLength") & !str_detect(x, ":")) {
+      to_categorical(as.integer(predict_df[[x]]) - 1)
+    } else if (str_detect(x, ":")) {
       names = str_split(x, ":")[[1]]
       #I'll assume that it's always a categorical value:an integer value
-      to_categorical(as.integer(predict_df[[names[1]]])-1) * predict_df[[names[2]]]
-    } else if (x %in% c("currLength", "currLengthSq")){
+      to_categorical(as.integer(predict_df[[names[1]]]) - 1) *
+        predict_df[[names[2]]]
+    } else if (x %in% c("currLength", "currLengthSq")) {
       to_categorical(predict_df[[x]])
     } else {
       predict_df[[x]]
@@ -285,81 +462,119 @@ fitIUPredictModel = function(predictors,
   })
   x = reduce(x_parts, cbind)
   input_dim = ncol(x)
-  
+
   print("Defining and compiling model ...")
   model_simple = function() {
-    name = paste0("iu_model_", paste0(predictors %>% str_replace(":", "And"), collapse="_"))
+    name = paste0(
+      "iu_model_",
+      paste0(predictors %>% str_replace(":", "And"), collapse = "_")
+    )
     keras_model_custom(name = name, function(self) {
-      
-      self$dense1 = layer_dense(units = 5L,
-                                activation = "softmax",
-                                input_shape = input_dim,
-                                kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight))
-  
+      self$dense1 = layer_dense(
+        units = 5L,
+        activation = "softmax",
+        input_shape = input_dim,
+        kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight)
+      )
+
       function(inputs, mask = NULL, training = FALSE) {
         self$dense1(inputs)
       }
     })
   }
-  
+
   model = model_simple()
-  model %>% compile(
-    loss = 'categorical_crossentropy',
-    optimizer = optimizer_rmsprop(),
-    metrics = c('accuracy')
-  )
-  
+  model %>%
+    compile(
+      loss = 'categorical_crossentropy',
+      optimizer = optimizer_rmsprop(),
+      metrics = c('accuracy')
+    )
+
   print("Starting the fitting ...")
   #Weighting: https://arxiv.org/abs/1901.05555
   y_counts = apply(y, 2, sum)
-  if(weight_type == "balanced"){
-    class_weights = lapply((1-weight_beta)/(1-weight_beta^y_counts), function(x) x)
+  if (weight_type == "balanced") {
+    class_weights = lapply(
+      (1 - weight_beta) / (1 - weight_beta^y_counts),
+      function(x) x
+    )
     names(class_weights) = 1:length(y_counts) - 1
-  } else if(weight_type == "inverse"){
-    class_weights = 1 / (y_counts^weight_inverse_power) / (sum(1 / (y_counts^weight_inverse_power)))
+  } else if (weight_type == "inverse") {
+    class_weights = 1 /
+      (y_counts^weight_inverse_power) /
+      (sum(1 / (y_counts^weight_inverse_power)))
   } else {
     class_weights = weight_custom
   }
-  model %>% fit(x, y,
-                epochs = epochs,
-                batch_size = batch_size,
-                class_weight = weights,
-                sample_weight = 1/predict_df$totalLength,
-                callbacks = list(
-    callback_learning_rate_scheduler(function(epoch, rate){
-      current = lr_initial * lr_multiplier ^ epoch
-    })))
-  
-  print("Getting predictions and results ...")  
+  model %>%
+    fit(
+      x,
+      y,
+      epochs = epochs,
+      batch_size = batch_size,
+      class_weight = weights,
+      sample_weight = 1 / predict_df$totalLength,
+      callbacks = list(
+        callback_learning_rate_scheduler(function(epoch, rate) {
+          current = lr_initial * lr_multiplier^epoch
+        })
+      )
+    )
+
+  print("Getting predictions and results ...")
   full_predictions = model %>% predict(x, y, batch_size = 32)
-  colnames(full_predictions) = c("noBoundary_p", "continuing_p", "break_p", "final_p", "appeal_p")
+  colnames(full_predictions) = c(
+    "noBoundary_p",
+    "continuing_p",
+    "break_p",
+    "final_p",
+    "appeal_p"
+  )
   result_df = predict_df %>% cbind(full_predictions)
   decisions = getDecisions(result_df)
   result_df = result_df %>% ungroup %>% mutate(decision = decisions)
-  result_df %>% select(nextEndnote, decision, noBoundary_p, continuing_p, break_p, final_p, appeal_p) %>% View
+  result_df %>%
+    select(
+      nextEndnote,
+      decision,
+      noBoundary_p,
+      continuing_p,
+      break_p,
+      final_p,
+      appeal_p
+    ) %>%
+    View
   weights = get_weights(model)
   colnames(weights[[1]]) = levels(predict_df$nextEndnote)
-  x_levels = lapply(predictors, function(x){
-    if(str_detect(x, "init1")){
-      if(str_detect(x, ":")){
+  x_levels = lapply(predictors, function(x) {
+    if (str_detect(x, "init1")) {
+      if (str_detect(x, ":")) {
         word = strsplit(x, ":")[[1]][1]
         result = paste0(x, "_", levels(predict_df[[word]]))
-      } else result = paste0(x, "_", levels(predict_df[[x]]))
+      } else {
+        result = paste0(x, "_", levels(predict_df[[x]]))
+      }
       result[-length(result)]
-    } else if(str_detect(x, ":")){
+    } else if (str_detect(x, ":")) {
       word = strsplit(x, ":")[[1]][1]
       result = paste0(x, "_", levels(predict_df[[word]]))
-    } else if(str_detect(x, "currLength")){
+    } else if (str_detect(x, "currLength")) {
       paste0(x, "_", 1:(predict_df[["currLength"]] %>% max + 1))
     } else {
       paste0(x, "_", levels(predict_df[[x]]))
     }
-  }) 
-  rownames(weights[[1]]) = x_levels %>% reduce(function(x,y) c(x,y))
+  })
+  rownames(weights[[1]]) = x_levels %>% reduce(function(x, y) c(x, y))
   names(weights[[2]]) = levels(predict_df$nextEndnote)
-  
+
   print("Done!")
-  list(model = model, weights = weights, result_df = result_df, class_weights = class_weights)
+  list(
+    model = model,
+    weights = weights,
+    result_df = result_df,
+    class_weights = class_weights
+  )
 }
 
 ```
@@ -367,79 +582,200 @@ fitIUPredictModel = function(predictors,
 
 ```{r}
 model_prev1_prev2_prev3 = fitIUPredictModel(c("prev1", "prev2", "prev3"))
-model_prev1_prev2_prev3_currLength_init1 = fitIUPredictModel(c("prev1", "prev2", "prev3", "currLength", "init1"), weight_type = "custom", weight_custom = c(0.0001,1,1,1,1), weight_inverse_power = 3, epochs = 3)
-model_prev1_prev2_curr_currLength_init1 = fitIUPredictModel(c("prev1", "prev2", "curr", "currLength", "init1"), weight_type = "custom", weight_custom = c(0.00001,1,1,1,1), epochs = 3)
-model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength = fitIUPredictModel(c("prevEndnote", "prev1", "prev2", "prev3", "currLength", "init1", "init2", "init3", "init1:currLength", "init2:currLength", "init3:currLength"), weight_type = "custom", weight_custom = c(0.00001,1,1,1,1), epochs = 3)
-model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength_init1AndcurrLengthSq_init2AndcurrLengthSq_init3AndcurrLengthSq = fitIUPredictModel(c("prevEndnote", "prev1", "prev2", "prev3", "currLength", "init1", "init2", "init3", "init1:currLength", "init2:currLength", "init3:currLength", "init1:currLengthSq", "init2:currLengthSq", "init3:currLengthSq"), weight_type = "custom", weight_custom = c(0.00001,1,1,1,1), epochs = 3)
+model_prev1_prev2_prev3_currLength_init1 = fitIUPredictModel(
+  c("prev1", "prev2", "prev3", "currLength", "init1"),
+  weight_type = "custom",
+  weight_custom = c(0.0001, 1, 1, 1, 1),
+  weight_inverse_power = 3,
+  epochs = 3
+)
+model_prev1_prev2_curr_currLength_init1 = fitIUPredictModel(
+  c("prev1", "prev2", "curr", "currLength", "init1"),
+  weight_type = "custom",
+  weight_custom = c(0.00001, 1, 1, 1, 1),
+  epochs = 3
+)
+model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength = fitIUPredictModel(
+  c(
+    "prevEndnote",
+    "prev1",
+    "prev2",
+    "prev3",
+    "currLength",
+    "init1",
+    "init2",
+    "init3",
+    "init1:currLength",
+    "init2:currLength",
+    "init3:currLength"
+  ),
+  weight_type = "custom",
+  weight_custom = c(0.00001, 1, 1, 1, 1),
+  epochs = 3
+)
+model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength_init1AndcurrLengthSq_init2AndcurrLengthSq_init3AndcurrLengthSq = fitIUPredictModel(
+  c(
+    "prevEndnote",
+    "prev1",
+    "prev2",
+    "prev3",
+    "currLength",
+    "init1",
+    "init2",
+    "init3",
+    "init1:currLength",
+    "init2:currLength",
+    "init3:currLength",
+    "init1:currLengthSq",
+    "init2:currLengthSq",
+    "init3:currLengthSq"
+  ),
+  weight_type = "custom",
+  weight_custom = c(0.00001, 1, 1, 1, 1),
+  epochs = 3
+)
 ```
 
 ```{r}
-metrics = function(model, currDecisions = NULL){
-  if(is.null(currDecisions)) rm(currDecisions)
-  
-  boundaryTP = model$result_df %>% filter(nextEndnote != "noBoundary" & currDecisions != "noBoundary") %>% nrow
-  boundaryTN = model$result_df %>% filter(nextEndnote == "noBoundary" & currDecisions == "noBoundary") %>% nrow
-  boundaryFP = model$result_df %>% filter(nextEndnote == "noBoundary" & currDecisions != "noBoundary") %>% nrow
-  boundaryFN = model$result_df %>% filter(nextEndnote != "noBoundary" & currDecisions == "noBoundary") %>% nrow
-  
+metrics = function(model, currDecisions = NULL) {
+  if (is.null(currDecisions)) {
+    rm(currDecisions)
+  }
+
+  boundaryTP = model$result_df %>%
+    filter(nextEndnote != "noBoundary" & currDecisions != "noBoundary") %>%
+    nrow
+  boundaryTN = model$result_df %>%
+    filter(nextEndnote == "noBoundary" & currDecisions == "noBoundary") %>%
+    nrow
+  boundaryFP = model$result_df %>%
+    filter(nextEndnote == "noBoundary" & currDecisions != "noBoundary") %>%
+    nrow
+  boundaryFN = model$result_df %>%
+    filter(nextEndnote != "noBoundary" & currDecisions == "noBoundary") %>%
+    nrow
+
   boundaryPrecision = boundaryTP / (boundaryTP + boundaryFP)
   boundaryRecall = boundaryTP / (boundaryTP + boundaryFN)
   boundaryFPR = boundaryFP / (boundaryFP + boundaryTN)
-  
-  terminalTP = model$result_df %>% filter((nextEndnote %in% c("final", "appeal")) & (currDecisions %in% c("final", "appeal"))) %>% nrow
-  terminalTN = model$result_df %>% filter(!(nextEndnote %in% c("final", "appeal")) & !(currDecisions %in% c("final", "appeal"))) %>% nrow
-  terminalFP = model$result_df %>% filter(!(nextEndnote %in% c("final", "appeal")) & (currDecisions %in% c("final", "appeal"))) %>% nrow
-  terminalFN = model$result_df %>% filter((nextEndnote %in% c("final", "appeal")) & !(currDecisions %in% c("final", "appeal"))) %>% nrow
-  
+
+  terminalTP = model$result_df %>%
+    filter(
+      (nextEndnote %in% c("final", "appeal")) &
+        (currDecisions %in% c("final", "appeal"))
+    ) %>%
+    nrow
+  terminalTN = model$result_df %>%
+    filter(
+      !(nextEndnote %in% c("final", "appeal")) &
+        !(currDecisions %in% c("final", "appeal"))
+    ) %>%
+    nrow
+  terminalFP = model$result_df %>%
+    filter(
+      !(nextEndnote %in% c("final", "appeal")) &
+        (currDecisions %in% c("final", "appeal"))
+    ) %>%
+    nrow
+  terminalFN = model$result_df %>%
+    filter(
+      (nextEndnote %in% c("final", "appeal")) &
+        !(currDecisions %in% c("final", "appeal"))
+    ) %>%
+    nrow
+
   terminalPrecision = terminalTP / (terminalTP + terminalFP)
   terminalRecall = terminalTP / (terminalTP + terminalFN)
   terminalFPR = terminalFP / (terminalFP + terminalTN)
-  
-  finalTP = model$result_df %>% filter(nextEndnote == "final" & currDecisions == "final") %>% nrow
-  finalTN = model$result_df %>% filter(nextEndnote != "final" & currDecisions != "final") %>% nrow
-  finalFP = model$result_df %>% filter(nextEndnote != "final" & currDecisions == "final") %>% nrow
-  finalFN = model$result_df %>% filter(nextEndnote == "final" & currDecisions != "final") %>% nrow
-  
+
+  finalTP = model$result_df %>%
+    filter(nextEndnote == "final" & currDecisions == "final") %>%
+    nrow
+  finalTN = model$result_df %>%
+    filter(nextEndnote != "final" & currDecisions != "final") %>%
+    nrow
+  finalFP = model$result_df %>%
+    filter(nextEndnote != "final" & currDecisions == "final") %>%
+    nrow
+  finalFN = model$result_df %>%
+    filter(nextEndnote == "final" & currDecisions != "final") %>%
+    nrow
+
   finalPrecision = finalTP / (finalTP + finalFP)
   finalRecall = finalTP / (finalTP + finalFN)
   finalFPR = finalFP / (finalFP + finalTN)
-  
-  
-  appealTP = model$result_df %>% filter(nextEndnote == "appeal" & currDecisions == "appeal") %>% nrow
-  appealTN = model$result_df %>% filter(nextEndnote != "appeal" & currDecisions != "appeal") %>% nrow
-  appealFP = model$result_df %>% filter(nextEndnote != "appeal" & currDecisions == "appeal") %>% nrow
-  appealFN = model$result_df %>% filter(nextEndnote == "appeal" & currDecisions != "appeal") %>% nrow
-  
+
+  appealTP = model$result_df %>%
+    filter(nextEndnote == "appeal" & currDecisions == "appeal") %>%
+    nrow
+  appealTN = model$result_df %>%
+    filter(nextEndnote != "appeal" & currDecisions != "appeal") %>%
+    nrow
+  appealFP = model$result_df %>%
+    filter(nextEndnote != "appeal" & currDecisions == "appeal") %>%
+    nrow
+  appealFN = model$result_df %>%
+    filter(nextEndnote == "appeal" & currDecisions != "appeal") %>%
+    nrow
+
   appealPrecision = appealTP / (appealTP + appealFP)
   appealRecall = appealTP / (appealTP + appealFN)
   appealFPR = appealFP / (appealFP + appealTN)
-  
-  
-  continuingTP = model$result_df %>% filter(nextEndnote == "continuing" & currDecisions == "continuing") %>% nrow
-  continuingTN = model$result_df %>% filter(nextEndnote != "continuing" & currDecisions != "continuing") %>% nrow
-  continuingFP = model$result_df %>% filter(nextEndnote != "continuing" & currDecisions == "continuing") %>% nrow
-  continuingFN = model$result_df %>% filter(nextEndnote == "continuing" & currDecisions != "continuing") %>% nrow
-  
+
+  continuingTP = model$result_df %>%
+    filter(nextEndnote == "continuing" & currDecisions == "continuing") %>%
+    nrow
+  continuingTN = model$result_df %>%
+    filter(nextEndnote != "continuing" & currDecisions != "continuing") %>%
+    nrow
+  continuingFP = model$result_df %>%
+    filter(nextEndnote != "continuing" & currDecisions == "continuing") %>%
+    nrow
+  continuingFN = model$result_df %>%
+    filter(nextEndnote == "continuing" & currDecisions != "continuing") %>%
+    nrow
+
   continuingPrecision = continuingTP / (continuingTP + continuingFP)
   continuingRecall = continuingTP / (continuingTP + continuingFN)
   continuingFPR = continuingFP / (continuingFP + continuingTN)
-  
-  
-  breakTP = model$result_df %>% filter(nextEndnote == "break" & currDecisions == "break") %>% nrow
-  breakTN = model$result_df %>% filter(nextEndnote != "break" & currDecisions != "break") %>% nrow
-  breakFP = model$result_df %>% filter(nextEndnote != "break" & currDecisions == "break") %>% nrow
-  breakFN = model$result_df %>% filter(nextEndnote == "break" & currDecisions != "break") %>% nrow
-  
+
+  breakTP = model$result_df %>%
+    filter(nextEndnote == "break" & currDecisions == "break") %>%
+    nrow
+  breakTN = model$result_df %>%
+    filter(nextEndnote != "break" & currDecisions != "break") %>%
+    nrow
+  breakFP = model$result_df %>%
+    filter(nextEndnote != "break" & currDecisions == "break") %>%
+    nrow
+  breakFN = model$result_df %>%
+    filter(nextEndnote == "break" & currDecisions != "break") %>%
+    nrow
+
   breakPrecision = breakTP / (breakTP + breakFP)
   breakRecall = breakTP / (breakTP + breakFN)
   breakFPR = breakFP / (breakFP + breakTN)
-  
-  list(boundaryPrecision = boundaryPrecision, boundaryRecall = boundaryRecall, boundaryFPR = boundaryFPR,
-       terminalPrecision = terminalPrecision, terminalRecall = terminalRecall, terminalFPR = terminalFPR,
-       appealPrecision = appealPrecision, appealRecall = appealRecall, appealFPR = appealFPR,
-       finalPrecision = finalPrecision, finalRecall = finalRecall, finalFPR = finalFPR,
-       continuingPrecision = continuingPrecision, continuingRecall = continuingRecall, continuingFPR = continuingFPR,
-       breakPrecision = breakPrecision, breakRecall = breakRecall, breakFPR = breakFPR)
+
+  list(
+    boundaryPrecision = boundaryPrecision,
+    boundaryRecall = boundaryRecall,
+    boundaryFPR = boundaryFPR,
+    terminalPrecision = terminalPrecision,
+    terminalRecall = terminalRecall,
+    terminalFPR = terminalFPR,
+    appealPrecision = appealPrecision,
+    appealRecall = appealRecall,
+    appealFPR = appealFPR,
+    finalPrecision = finalPrecision,
+    finalRecall = finalRecall,
+    finalFPR = finalFPR,
+    continuingPrecision = continuingPrecision,
+    continuingRecall = continuingRecall,
+    continuingFPR = continuingFPR,
+    breakPrecision = breakPrecision,
+    breakRecall = breakRecall,
+    breakFPR = breakFPR
+  )
 }
 
 ```
@@ -448,46 +784,93 @@ metrics = function(model, currDecisions = NULL){
 
 ```{r}
 library(brms)
-pauseDistr = sbc %>% group_by(docId, unitId, participantId) %>% summarise(noPauses = sum(text == "(...)", na.rm = T), length = sum(kind == "word"))
+pauseDistr = sbc %>%
+  group_by(docId, unitId, participantId) %>%
+  summarise(
+    noPauses = sum(text == "(...)", na.rm = T),
+    length = sum(kind == "word")
+  )
 
-pauseDistr %>% ungroup %>% group_by(length) %>% summarise(m = mean(noPauses), var = var(noPauses)) %>% View
-pause_model_iu = brm(noPauses ~ length, data = pauseDistr, family = "poisson", cores = getOption("mc.cores", 1), chains = 1L)
-pause_model_iu_rslope_part = brm(noPauses ~ length + (1|participantId), data = pauseDistr, family = "poisson", cores = getOption("mc.cores", 4L), chains = 4L)
+pauseDistr %>%
+  ungroup %>%
+  group_by(length) %>%
+  summarise(m = mean(noPauses), var = var(noPauses)) %>%
+  View
+pause_model_iu = brm(
+  noPauses ~ length,
+  data = pauseDistr,
+  family = "poisson",
+  cores = getOption("mc.cores", 1),
+  chains = 1L
+)
+pause_model_iu_rslope_part = brm(
+  noPauses ~ length + (1 | participantId),
+  data = pauseDistr,
+  family = "poisson",
+  cores = getOption("mc.cores", 4L),
+  chains = 4L
+)
 pause_model_iu_predict = pause_model_iu
 
 pause_model_no_iu = brm(noPauses ~ 0, family = binomial(), )
 
-pause_model_iu_only = brm(noPauses ~ ., data = pauseDistr, family = "poisson", cores = getOption("mc.cores", 1), chains = 1L)
+pause_model_iu_only = brm(
+  noPauses ~ .,
+  data = pauseDistr,
+  family = "poisson",
+  cores = getOption("mc.cores", 1),
+  chains = 1L
+)
 
 
-pauseDistrByPID = sbc %>% group_by(docId, pSentSeq, participantId) %>% summarise(noPauses = sum(text == "(...)", na.rm = T), length = sum(kind == "word"), noIUs = length(unique(unitId)))
-pause_model_psent = brm(noPauses ~ length + noIUs, data = pauseDistrByPID, family = "poisson", cores = getOption("mc.cores", 1), chains = 1L)
-pause_model_psent_rslope_part = brm(noPauses ~ length + noIUs + (1|participantId), data = pauseDistrByPID, family = "poisson", cores = getOption("mc.cores", 4L))
+pauseDistrByPID = sbc %>%
+  group_by(docId, pSentSeq, participantId) %>%
+  summarise(
+    noPauses = sum(text == "(...)", na.rm = T),
+    length = sum(kind == "word"),
+    noIUs = length(unique(unitId))
+  )
+pause_model_psent = brm(
+  noPauses ~ length + noIUs,
+  data = pauseDistrByPID,
+  family = "poisson",
+  cores = getOption("mc.cores", 1),
+  chains = 1L
+)
+pause_model_psent_rslope_part = brm(
+  noPauses ~ length + noIUs + (1 | participantId),
+  data = pauseDistrByPID,
+  family = "poisson",
+  cores = getOption("mc.cores", 4L)
+)
 
 ```
 
 ```{r}
-fitIUPredictModelHiddenLayer = function(predictors,
-                             weight_type = "balanced",
-                             weight_custom = c(1,1,1,1,1),
-                             weight_beta = 0.9999,
-                             weight_inverse_power = 1,
-                             lr_initial = 0.0005,
-                             lr_multiplier = 0.1,
-                             l1_weight = 0.001,
-                             l2_weight = 0.001,
-                             epochs = 5,
-                             batch_size = 32){
+fitIUPredictModelHiddenLayer = function(
+  predictors,
+  weight_type = "balanced",
+  weight_custom = c(1, 1, 1, 1, 1),
+  weight_beta = 0.9999,
+  weight_inverse_power = 1,
+  lr_initial = 0.0005,
+  lr_multiplier = 0.1,
+  l1_weight = 0.001,
+  l2_weight = 0.001,
+  epochs = 5,
+  batch_size = 32
+) {
   print("Doing one-hot encoding ...")
-  y = to_categorical(as.integer(predict_df$nextEndnote)-1)
-  x_parts = lapply(predictors, function(x){
-    if(!str_detect(x, "currLength") & !str_detect(x, ":")){
-      to_categorical(as.integer(predict_df[[x]])-1)
-    } else if(str_detect(x, ":")) {
+  y = to_categorical(as.integer(predict_df$nextEndnote) - 1)
+  x_parts = lapply(predictors, function(x) {
+    if (!str_detect(x, "currLength") & !str_detect(x, ":")) {
+      to_categorical(as.integer(predict_df[[x]]) - 1)
+    } else if (str_detect(x, ":")) {
       names = str_split(x, ":")[[1]]
       #I'll assume that it's always a categorical value:an integer value
-      to_categorical(as.integer(predict_df[[names[1]]])-1) * predict_df[[names[2]]]
-    } else if (x %in% c("currLength", "currLengthSq")){
+      to_categorical(as.integer(predict_df[[names[1]]]) - 1) *
+        predict_df[[names[2]]]
+    } else if (x %in% c("currLength", "currLengthSq")) {
       to_categorical(predict_df[[x]])
     } else {
       predict_df[[x]]
@@ -495,21 +878,27 @@ fitIUPredictModelHiddenLayer = function(predictors,
   })
   x = reduce(x_parts, cbind)
   input_dim = ncol(x)
-  
+
   print("Defining and compiling model ...")
   model_hidden = function() {
-    name = paste0("iu_model_", paste0(predictors %>% str_replace(":", "And"), collapse="_"))
+    name = paste0(
+      "iu_model_",
+      paste0(predictors %>% str_replace(":", "And"), collapse = "_")
+    )
     keras_model_custom(name = name, function(self) {
-      
-      self$dense1 = layer_dense(units = 50L,
-                                activation = "relu",
-                                input_shape = input_dim,
-                                kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight))
-      self$dense2 = layer_dense(units = 5L,
-                                activation = "softmax",
-                                input_shape = input_dim,
-                                kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight))
-  
+      self$dense1 = layer_dense(
+        units = 50L,
+        activation = "relu",
+        input_shape = input_dim,
+        kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight)
+      )
+      self$dense2 = layer_dense(
+        units = 5L,
+        activation = "softmax",
+        input_shape = input_dim,
+        kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight)
+      )
+
       function(inputs, mask = NULL, training = FALSE) {
         x = self$dense1(inputs)
         x = self$dense2(x)
@@ -517,93 +906,136 @@ fitIUPredictModelHiddenLayer = function(predictors,
       }
     })
   }
-  
+
   model = model_hidden()
-  model %>% compile(
-    loss = 'categorical_crossentropy',
-    optimizer = optimizer_rmsprop(),
-    metrics = c('accuracy')
-  )
-  
+  model %>%
+    compile(
+      loss = 'categorical_crossentropy',
+      optimizer = optimizer_rmsprop(),
+      metrics = c('accuracy')
+    )
+
   print("Starting the fitting ...")
   #Weighting: https://arxiv.org/abs/1901.05555
   y_counts = apply(y, 2, sum)
-  if(weight_type == "balanced"){
-    class_weights = lapply((1-weight_beta)/(1-weight_beta^y_counts), function(x) x)
+  if (weight_type == "balanced") {
+    class_weights = lapply(
+      (1 - weight_beta) / (1 - weight_beta^y_counts),
+      function(x) x
+    )
     names(class_weights) = 1:length(y_counts) - 1
-  } else if(weight_type == "inverse"){
-    class_weights = 1 / (y_counts^weight_inverse_power) / (sum(1 / (y_counts^weight_inverse_power)))
+  } else if (weight_type == "inverse") {
+    class_weights = 1 /
+      (y_counts^weight_inverse_power) /
+      (sum(1 / (y_counts^weight_inverse_power)))
   } else {
     class_weights = weight_custom
   }
-  model %>% fit(x, y,
-                epochs = epochs,
-                batch_size = batch_size,
-                class_weight = weights,
-                sample_weight = 1/predict_df$totalLength,
-                callbacks = list(
-    callback_learning_rate_scheduler(function(epoch, rate){
-      current = lr_initial * lr_multiplier ^ epoch
-    })))
-  
-  print("Getting predictions and results ...")  
+  model %>%
+    fit(
+      x,
+      y,
+      epochs = epochs,
+      batch_size = batch_size,
+      class_weight = weights,
+      sample_weight = 1 / predict_df$totalLength,
+      callbacks = list(
+        callback_learning_rate_scheduler(function(epoch, rate) {
+          current = lr_initial * lr_multiplier^epoch
+        })
+      )
+    )
+
+  print("Getting predictions and results ...")
   full_predictions = model %>% predict(x, y, batch_size = 32)
-  colnames(full_predictions) = c("noBoundary_p", "continuing_p", "break_p", "final_p", "appeal_p")
+  colnames(full_predictions) = c(
+    "noBoundary_p",
+    "continuing_p",
+    "break_p",
+    "final_p",
+    "appeal_p"
+  )
   result_df = predict_df %>% cbind(full_predictions)
   decisions = getDecisions(result_df)
   result_df = result_df %>% ungroup %>% mutate(decision = decisions)
-  result_df %>% select(nextEndnote, decision, noBoundary_p, continuing_p, break_p, final_p, appeal_p) %>% View
+  result_df %>%
+    select(
+      nextEndnote,
+      decision,
+      noBoundary_p,
+      continuing_p,
+      break_p,
+      final_p,
+      appeal_p
+    ) %>%
+    View
   weights = get_weights(model)
   colnames(weights[[1]]) = levels(predict_df$nextEndnote)
-  x_levels = lapply(predictors, function(x){
-    if(str_detect(x, "init1")){
-      if(str_detect(x, ":")){
+  x_levels = lapply(predictors, function(x) {
+    if (str_detect(x, "init1")) {
+      if (str_detect(x, ":")) {
         word = strsplit(x, ":")[[1]][1]
         result = paste0(x, "_", levels(predict_df[[word]]))
-      } else result = paste0(x, "_", levels(predict_df[[x]]))
+      } else {
+        result = paste0(x, "_", levels(predict_df[[x]]))
+      }
       result[-length(result)]
-    } else if(str_detect(x, ":")){
+    } else if (str_detect(x, ":")) {
       word = strsplit(x, ":")[[1]][1]
       result = paste0(x, "_", levels(predict_df[[word]]))
-    } else if(str_detect(x, "currLength")){
+    } else if (str_detect(x, "currLength")) {
       paste0(x, "_", 1:(predict_df[["currLength"]] %>% max + 1))
     } else {
       paste0(x, "_", levels(predict_df[[x]]))
     }
-  }) 
-  rownames(weights[[1]]) = x_levels %>% reduce(function(x,y) c(x,y))
+  })
+  rownames(weights[[1]]) = x_levels %>% reduce(function(x, y) c(x, y))
   names(weights[[4]]) = levels(predict_df$nextEndnote)
-  
+
   print("Done!")
-  list(model = model, weights = weights, result_df = result_df, class_weights = class_weights)
+  list(
+    model = model,
+    weights = weights,
+    result_df = result_df,
+    class_weights = class_weights
+  )
 }
 
 ```
 
 
 ```{r}
-getDecisions = function(result_df, bound_thres = .5){
+getDecisions = function(result_df, bound_thres = .5) {
   case_when(
     result_df$noBoundary_p >= bound_thres ~ "noBoundary",
-    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) > bound_thres & result_df$final_p >= result_df$appeal_p ~"final",
-    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) > bound_thres & result_df$final_p < result_df$appeal_p ~"appeal",
+    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) >
+      bound_thres &
+      result_df$final_p >= result_df$appeal_p ~
+      "final",
+    (result_df$final_p + result_df$appeal_p) / (1 - result_df$noBoundary_p) >
+      bound_thres &
+      result_df$final_p < result_df$appeal_p ~
+      "appeal",
     result_df$continuing_p > result_df$break_p ~ "continuing",
     T ~ "break"
   )
 }
 
-getROC = function(model, points = seq(0, 1, .05)){
+getROC = function(model, points = seq(0, 1, .05)) {
   recalls = numeric()
   fprs = numeric()
-  for(currThres in points){
+  for (currThres in points) {
     decisions = getDecisions(model$result_df, bound_thres = currThres)
     allMetrics = metrics(model, decisions)
     recalls = c(recalls, allMetrics$boundaryRecall)
     fprs = c(fprs, allMetrics$boundaryFPR)
   }
-  ggplot(data = data.frame(fprs, recalls), aes(x = fprs, y = recalls)) + geom_line()
+  ggplot(data = data.frame(fprs, recalls), aes(x = fprs, y = recalls)) +
+    geom_line()
 }
-model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength_init1AndcurrLengthSq_init2AndcurrLengthSq_init3AndcurrLengthSq_roc = getROC(model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength_init1AndcurrLengthSq_init2AndcurrLengthSq_init3AndcurrLengthSq)
+model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength_init1AndcurrLengthSq_init2AndcurrLengthSq_init3AndcurrLengthSq_roc = getROC(
+  model_prev1_prev2_prev3_currLength_init1_init2_init3_init1AndcurrLength_init2AndcurrLength_init3AndcurrLength_init1AndcurrLengthSq_init2AndcurrLengthSq_init3AndcurrLengthSq
+)
 
 ```
 
@@ -621,24 +1053,27 @@ batch_size = 32
 
 
 ```{r}
-fitIUBinaryModel = function(predictors,
-                            response,
-                             lr_initial = 0.0005,
-                             lr_multiplier = 0.1,
-                             l1_weight = 0.001,
-                             l2_weight = 0.001,
-                             epochs = 3,
-                             batch_size = 32){
+fitIUBinaryModel = function(
+  predictors,
+  response,
+  lr_initial = 0.0005,
+  lr_multiplier = 0.1,
+  l1_weight = 0.001,
+  l2_weight = 0.001,
+  epochs = 3,
+  batch_size = 32
+) {
   print("Doing one-hot encoding ...")
   y = to_categorical(as.integer(predict_df[[response]]) %>% as.matrix)
-  x_parts = lapply(predictors, function(x){
-    if(!str_detect(x, "currLength") & !str_detect(x, ":")){
-      to_categorical(as.integer(predict_df[[x]])-1)
-    } else if(str_detect(x, ":")) {
+  x_parts = lapply(predictors, function(x) {
+    if (!str_detect(x, "currLength") & !str_detect(x, ":")) {
+      to_categorical(as.integer(predict_df[[x]]) - 1)
+    } else if (str_detect(x, ":")) {
       names = str_split(x, ":")[[1]]
       #I'll assume that it's always a categorical value:an integer value
-      to_categorical(as.integer(predict_df[[names[1]]])-1) * predict_df[[names[2]]]
-    } else if (x %in% c("currLength", "currLengthSq")){
+      to_categorical(as.integer(predict_df[[names[1]]]) - 1) *
+        predict_df[[names[2]]]
+    } else if (x %in% c("currLength", "currLengthSq")) {
       to_categorical(predict_df[[x]])
     } else {
       predict_df[[x]]
@@ -646,63 +1081,98 @@ fitIUBinaryModel = function(predictors,
   })
   x = reduce(x_parts, cbind)
   input_dim = ncol(x)
-  
+
   print("Defining and compiling model ...")
-  model = keras_model_sequential() %>% layer_dense(units = 2L,
-                                activation = "sigmoid",
-                                input_shape = input_dim,
-                                kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight))
-  model %>% compile(
-    loss = loss_binary_crossentropy(),
-    optimizer = optimizer_adam(),
-    metrics = metric_binary_accuracy()
-  )
-  
+  model = keras_model_sequential() %>%
+    layer_dense(
+      units = 2L,
+      activation = "sigmoid",
+      input_shape = input_dim,
+      kernel_regularizer = regularizer_l1_l2(l1 = l1_weight, l2 = l2_weight)
+    )
+  model %>%
+    compile(
+      loss = loss_binary_crossentropy(),
+      optimizer = optimizer_adam(),
+      metrics = metric_binary_accuracy()
+    )
+
   print("Starting the fitting ...")
   #Weighting: https://arxiv.org/abs/1901.05555
-  model %>% fit(x, y,
-                epochs = epochs,
-                batch_size = batch_size,
-                sample_weight = 1/predict_df$totalLength,
-                callbacks = list(
-    callback_learning_rate_scheduler(function(epoch, rate){
-      current = lr_initial * lr_multiplier ^ epoch
-    })))
-  
-  print("Getting predictions and results ...")  
+  model %>%
+    fit(
+      x,
+      y,
+      epochs = epochs,
+      batch_size = batch_size,
+      sample_weight = 1 / predict_df$totalLength,
+      callbacks = list(
+        callback_learning_rate_scheduler(function(epoch, rate) {
+          current = lr_initial * lr_multiplier^epoch
+        })
+      )
+    )
+
+  print("Getting predictions and results ...")
   full_predictions = model %>% predict(x, y, batch_size = 32)
-  colnames(full_predictions) = c("noBoundary_p", "continuing_p", "break_p", "final_p", "appeal_p")
+  colnames(full_predictions) = c(
+    "noBoundary_p",
+    "continuing_p",
+    "break_p",
+    "final_p",
+    "appeal_p"
+  )
   result_df = predict_df %>% cbind(full_predictions)
   decisions = getDecisions(result_df)
   result_df = result_df %>% ungroup %>% mutate(decision = decisions)
-  result_df %>% select(nextEndnote, decision, noBoundary_p, continuing_p, break_p, final_p, appeal_p) %>% View
+  result_df %>%
+    select(
+      nextEndnote,
+      decision,
+      noBoundary_p,
+      continuing_p,
+      break_p,
+      final_p,
+      appeal_p
+    ) %>%
+    View
   weights = get_weights(model)
   colnames(weights[[1]]) = levels(predict_df$nextEndnote)
-  x_levels = lapply(predictors, function(x){
-    if(str_detect(x, "init1")){
-      if(str_detect(x, ":")){
+  x_levels = lapply(predictors, function(x) {
+    if (str_detect(x, "init1")) {
+      if (str_detect(x, ":")) {
         word = strsplit(x, ":")[[1]][1]
         result = paste0(x, "_", levels(predict_df[[word]]))
-      } else result = paste0(x, "_", levels(predict_df[[x]]))
+      } else {
+        result = paste0(x, "_", levels(predict_df[[x]]))
+      }
       result[-length(result)]
-    } else if(str_detect(x, ":")){
+    } else if (str_detect(x, ":")) {
       word = strsplit(x, ":")[[1]][1]
       result = paste0(x, "_", levels(predict_df[[word]]))
-    } else if(str_detect(x, "currLength")){
+    } else if (str_detect(x, "currLength")) {
       paste0(x, "_", 1:(predict_df[["currLength"]] %>% max + 1))
     } else {
       paste0(x, "_", levels(predict_df[[x]]))
     }
-  }) 
-  rownames(weights[[1]]) = x_levels %>% reduce(function(x,y) c(x,y))
+  })
+  rownames(weights[[1]]) = x_levels %>% reduce(function(x, y) c(x, y))
   names(weights[[4]]) = levels(predict_df$nextEndnote)
-  
+
   print("Done!")
-  list(model = model, weights = weights, result_df = result_df, class_weights = class_weights)
+  list(
+    model = model,
+    weights = weights,
+    result_df = result_df,
+    class_weights = class_weights
+  )
 }
 
-model_prev1_prev2_prev3_currLength_init1 = fitIUBinaryModel(c("prev1", "prev2", "prev3", "currLength", "init1"), "nextBoundary", epochs = 3)
-
+model_prev1_prev2_prev3_currLength_init1 = fitIUBinaryModel(
+  c("prev1", "prev2", "prev3", "currLength", "init1"),
+  "nextBoundary",
+  epochs = 3
+)
 
 ```
 
