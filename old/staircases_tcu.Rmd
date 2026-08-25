@@ -268,3 +268,9 @@ for (word in sbc_top200) {
   ggsave(here("output", "staircase_unit_in_tcu", glue("{word}.svg")))
 }
 ```
+
+## Attachment
+
+```{r}
+
+```

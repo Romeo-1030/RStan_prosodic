@@ -1,0 +1,139 @@
+
+Import the SBC:
+```{r}
+library(tidyverse)
+library(tidyr)
+library(rlang)
+library(glue)
+library(here)
+sbc <- readRDS(here("data", "sbc_turns_auto_utts.rds"))
+```
+
+Standardise spellings and capitalisation:
+```{r}
+sbc <- sbc %>%
+  mutate(
+    text = case_when(
+      text == "uh-" ~ "uh",
+      text == "hm" ~ "hmm",
+      text == "m" ~ "mm",
+      text == "hm-m" ~ "hm-mm",
+      text == "ooh" ~ "oo",
+      text == "aa" ~ "ah",
+      text == "nyah" ~ "nya",
+      T ~ text
+    )
+  )
+sbc <- sbc %>%
+  mutate(text_lower = case_when(kind == "word" ~ tolower(text), T ~ text))
+```
+
+
+Juilland's D calculations:
+```{r}
+#Prepare frequency table
+# fmt: skip
+sbc_word_perdoc_freq = sbc %>%
+  group_by(docId, text_lower) %>%
+  filter(kind == "word", str_detect(text_lower, "[a-z]")) %>%
+  filter(!text_lower %in% c("b","c","d","e","f","g","h","j","k","l","m","n","o","p","q","qu","r","s","t","u","v","w","x","y","z","ph","th","ch","sh","bl","br","cl","cr","dr","fl","fr","gl","gr","kn","pl","pr","sc","scr","sk","sl","sm","sn","sp","spr","st","str","sw","tr","wh","wr")) %>% #skip
+  count(.drop = F) %>%
+  ungroup %>%
+  pivot_wider(names_from = c("docId"), values_from = n)
+
+sbc_word_perdoc_freq <- sbc_word_perdoc_freq %>%
+  replace_na(
+    lapply(1:60, function(x) 0) %>%
+      `names<-`(colnames(sbc_word_perdoc_freq)[-1])
+  )
+
+#Julliand's U calculation
+sbc_word_perdoc_freq <- sbc_word_perdoc_freq %>%
+  mutate(
+    sd = apply(as.matrix(sbc_word_perdoc_freq[, -1]), 1, function(x) sd(x)),
+    vbar = apply(as.matrix(sbc_word_perdoc_freq[, -1]), 1, function(x) mean(x))
+  ) %>%
+  mutate(D = 1 - (sd / vbar) / sqrt(60 - 1)) %>%
+  mutate(U = D * vbar * 60)
+
+#Getting wordlists
+sbc_word_perdoc_freq <- sbc_word_perdoc_freq %>%
+  mutate(Urank = nrow(sbc_word_perdoc_freq) - rank(U) + 1)
+sbc_top100 <- sbc_word_perdoc_freq %>% filter(Urank <= 100) %>% pull(text_lower)
+sbc_top200 <- sbc_word_perdoc_freq %>% filter(Urank <= 200) %>% pull(text_lower)
+sbc_top300 <- sbc_word_perdoc_freq %>% filter(Urank <= 300) %>% pull(text_lower)
+sbc_top500 <- sbc_word_perdoc_freq %>% filter(Urank <= 500) %>% pull(text_lower)
+write_csv(
+  sbc_word_perdoc_freq %>% arrange(Urank),
+  here("data", "sbc_word_perdoc_freq.csv")
+)
+# saveRDS(sbc_top200, here("data", "sbc_top200.rds"))
+```
+
+
+## IU sizes
+
+
+```{r}
+props <- sbc %>%
+  group_by(unitId, docId) %>%
+  mutate(text = tolower(text)) %>%
+  mutate(unitLen = sum(kind == "word", na.rm = T)) %>%
+  ungroup() %>%
+  filter(text %in% sbc_top200) %>%
+  group_by(text, unitLen) %>%
+  count() %>%
+  ungroup() %>%
+  group_by(text) %>%
+  mutate(word_total = sum(n)) %>%
+  ungroup() %>%
+  mutate(prop = n / word_total)
+
+props %>%
+  ggplot(aes(x = unitLen, y = text, col = prop)) +
+  geom_tile()
+
+for (word in sbc_top200) {
+  curr_df <- props %>% filter(text == word)
+  ggplot(curr_df, aes(x = unitLen, y = n)) +
+    geom_col() +
+    ggtitle(word) +
+    scale_x_continuous(limits = c(0, 26))
+  ggsave(here("output", "length_bargraphs", glue("{word}_len.png")))
+}
+```
+
+```{r}
+props %>%
+  select(-word_total, -prop) %>%
+  filter(unitLen != 0) %>%
+  pivot_wider(values_from = n, names_sort = TRUE, names_from = "unitLen") %>%
+  write_csv(here("output", "length_bargraphs", "0_words_len.csv"))
+props %>%
+  select(-word_total, -n) %>%
+  filter(unitLen != 0) %>%
+  pivot_wider(values_from = prop, names_sort = TRUE, names_from = "unitLen") %>%
+  write_csv(here("output", "length_bargraphs", "0_words_len_prop.csv"))
+```
+
+
+```{r}
+sbc %>%
+  group_by(unitId, docId) %>%
+  mutate(text = tolower(text)) %>%
+  summarise(unitLen = as.integer(sum(kind == "word", na.rm = T))) %>%
+  filter(unitLen != 0) %>%
+  ggplot(aes(x = unitLen)) +
+  geom_bar() +
+  scale_x_continuous(limits = c(0, 26))
+ggsave(here("output", "length_bargraphs", glue("0_OVERALL_len.png")))
+
+iulen_nums <- sbc %>%
+  group_by(unitId, docId) %>%
+  mutate(text = tolower(text)) %>%
+  summarise(unitLen = as.integer(sum(kind == "word", na.rm = T))) %>%
+  filter(unitLen != 0) %>%
+  group_by(unitLen) %>%
+  count()
+write_csv(iulen_nums, here("output", "length_bargraphs", "0_OVERALL_len.csv"))
+```

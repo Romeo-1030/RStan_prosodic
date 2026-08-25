@@ -15,3 +15,6 @@
 .gitconfig
 .npm/_logs/*.log
 .Rproj.user
+output/attach.csv
+output/clause.csv
+output/entropies_v1.csv

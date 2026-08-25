@@ -54,11 +54,11 @@ put_values_in_true = function(vals, bool_vec, default_val = 0) {
   new_vec
 }
 
-pythonlike_range = function(max) {
-  if (max == 0) {
+pythonlike_range = function(min) {
+  if (min == 0) {
     numeric(0)
   } else {
-    1:max
+    1:min
   }
 }
 
@@ -109,14 +109,14 @@ get_staircase = function(
   title_suffix = "",
   y_text = "IU length",
   x_text = "Place",
-  max_len = 20
+  min_len = 20
 ) {
   counts = sbc %>%
     filter(text_lower == targetWord) %>%
     group_by({{ placeCol }}, {{ lenCol }}) %>%
     count %>%
     ungroup %>%
-    filter({{ lenCol }} < max_len, !is.na({{ placeCol }}), !is.na({{ lenCol }}))
+    filter({{ lenCol }} < min_len, !is.na({{ placeCol }}), !is.na({{ lenCol }}))
 
   graph = ggplot(counts, aes(x = {{ placeCol }}, y = {{ lenCol }})) +
     ggtitle(glue("{targetWord} {title_suffix}")) +
@@ -138,14 +138,14 @@ get_staircase = function(
       legend.spacing.x = unit(7, 'mm')
     ) +
     scale_y_continuous(
-      breaks = 1:max_len,
-      minor_breaks = seq(.5, max_len + .5, 1),
-      limits = c(.5, max_len)
+      breaks = 1:min_len,
+      minor_breaks = seq(.5, min_len + .5, 1),
+      limits = c(.5, min_len)
     ) +
     scale_x_continuous(
-      breaks = 1:max_len,
-      minor_breaks = seq(.5, max_len + .5, 1),
-      limits = c(0.5, max_len)
+      breaks = 1:min_len,
+      minor_breaks = seq(.5, min_len + .5, 1),
+      limits = c(0.5, min_len)
     ) +
     geom_vline(xintercept = .5) +
     geom_hline(yintercept = .5) +
@@ -168,7 +168,7 @@ for (word in sbc_top200) {
     utteranceWordLen,
     y_text = "TCU length",
     x_text = "Place in TCU",
-    max_len = 40,
+    min_len = 40,
     sbc = sbc
   )
   ggsave(here("output", "staircase_word_in_tcu", glue("{word}.png")))
@@ -184,7 +184,7 @@ for (word in sbc_top200) {
     utteranceUnitLen,
     y_text = "TCU length",
     x_text = "Place in TCU",
-    max_len = 25
+    min_len = 25
   )
   ggsave(here("output", "staircase_unit_in_tcu", glue("{word}.png")))
   ggsave(here("output", "staircase_unit_in_tcu", glue("{word}.svg")))
@@ -279,16 +279,15 @@ climb_up_until_verb = function(df, start_id) {
 
   return(NULL)
 }
-climb_up_until_verb(sent1, 2)
+#climb_up_until_verb(sent1, 2)
 ```
 
 ```{r}
-
 get_clause_positions = function(df, curr_sent) {
   curr_row_idx = which(df$sentId == curr_sent)
   curr_rows = df[curr_row_idx, ]
 
-  v2d = vector(mode = "list", length = max(curr_rows$spacy_id) + 1)
+  v2d = vector(mode = "list", length = min(curr_rows$spacy_id) + 1)
 
   for (i in 1:nrow(curr_rows)) {
     curr_id = curr_rows$spacy_id[i]
@@ -319,7 +318,7 @@ get_clause_positions = function(df, curr_sent) {
   df
 }
 
-after_sent1_retrieved = get_clause_positions(df, 1)
+#after_sent1_retrieved = get_clause_positions(df, 1)
 ```
 
 ```{r}
@@ -341,7 +340,7 @@ get_clause_info_for_utt = function(df) {
   }
   df
 }
-final_df = get_clause_info_for_utt(df %>% filter(utteranceSeq == 6))
+#final_df = get_clause_info_for_utt(df %>% filter(utteranceSeq == 6))
 ```
 
 
@@ -386,11 +385,17 @@ get_clause_info_for_sbc = function(df) {
   }
   df
 }
-doc_df = get_clause_info_for_sbc(sbc)
+sbc = get_clause_info_for_sbc(sbc)
 ```
 
 ```{r}
-doc_df = doc_df %>% mutate(clauseLength = clauseBack + clauseOrder - 1) %>% mutate(text_lower = tolower(text))
+write_csv(sbc, here("output", "clause.csv"))
+```
+
+```{r}
+sbc = sbc %>%
+  mutate(clauseLength = clauseBack + clauseOrder - 1) %>%
+  mutate(text_lower = tolower(text))
 ```
 ```{r}
 sbc = doc_df
@@ -405,7 +410,7 @@ get_staircase(
   clauseLength,
   y_text = "Clause length",
   x_text = "Place in clause",
-  max_len = 40,
+  min_len = 40,
   sbc = doc_df
 )
 ```
@@ -418,10 +423,336 @@ for (word in sbc_top200) {
     clauseLength,
     y_text = "Clause length",
     x_text = "Place in clause",
-    max_len = 40,
-    sbc = doc_df
+    min_len = 40,
+    sbc = sbc
   )
-  ggsave(here("output", "staircase_word_in_tcu", glue("{word}.png")))
-  ggsave(here("output", "staircase_word_in_tcu", glue("{word}.svg")))
+  ggsave(here("output", "staircase_word_in_clause", glue("{word}.png")))
+  ggsave(here("output", "staircase_word_in_clause", glue("{word}.svg")))
 }
 ```
+
+## Attachment info
+
+
+
+```{r}
+get_head_same_iu = function(df, curr_sent) {
+  sentenceIds = sentence_id_from_starts(df, df$is_spaCy_start, df$spaCy_ignored)
+  df = df %>% mutate(sentId = sentenceIds)
+  curr_row_idx = which(df$sentId == curr_sent)
+  curr_rows = df[curr_row_idx, ]
+
+  df = df %>%
+    mutate(head_unit = rep(NA, nrow(df)), same_unit_as_head = rep(NA, nrow(df)))
+
+  head_units = rep(NA, nrow(curr_rows))
+  same_unit_as_head = rep(NA, nrow(curr_rows))
+
+  for (i in 1:nrow(curr_rows)) {
+    curr_id = curr_rows$spacy_id[i]
+    curr_head = df %>% dplyr::filter(spacy_id == curr_id) %>% pull(head)
+    head_units[i] = df %>%
+      dplyr::filter(spacy_id == curr_head) %>%
+      slice(1) %>%
+      pull(unitId)
+    same_unit_as_head[i] = head_units[i] == curr_rows$unitId[i]
+  }
+
+  df$head_unit[curr_row_idx] = head_units
+  df$same_unit_as_head[curr_row_idx] = same_unit_as_head
+  df
+}
+
+sbc = sbc %>%
+  mutate(
+    sentId = sentence_id_from_starts(sbc, sbc$is_spaCy_start, sbc$spaCy_ignored)
+  )
+
+sbc_1to24_results = get_head_same_iu(sbc[1:24, ], 1)
+```
+
+```{r}
+get_attach_info_for_utt = function(df) {
+  df = df %>%
+    mutate(
+      head_unit = rep(NA, nrow(df)),
+      same_unit_as_head = rep(NA, nrow(df))
+    )
+
+  sentenceIds = sentence_id_from_starts(df, df$is_spaCy_start, df$spaCy_ignored)
+  df$sentId = sentenceIds
+  for (sent in unique(sentenceIds)) {
+    if (is.na(sent)) {
+      next
+    }
+    df = get_head_same_iu(df, sent)
+  }
+  df
+}
+```
+
+
+```{r}
+get_attach_info_for_doc = function(df) {
+  df = df %>%
+    mutate(
+      head_unit = rep(NA, nrow(df)),
+      same_unit_as_head = rep(NA, nrow(df))
+    )
+  utts = unique(df$utteranceSeq)
+  for (utt in utts) {
+    if (utt / 10 == floor(utt / 10)) {
+      print(paste("Processing utt ", utt))
+    }
+    curr_row_idx = which(df$utteranceSeq == utt)
+    clause_info = get_attach_info_for_utt(df %>% filter(utteranceSeq == utt))
+    df$head_unit[curr_row_idx] = clause_info$head_unit
+    df$same_unit_as_head[curr_row_idx] = clause_info$same_unit_as_head
+  }
+  df
+}
+doc_df = get_attach_info_for_doc(sbc %>% filter(docId == "sbc023"))
+```
+
+```{r}
+get_attach_info_for_sbc = function(df) {
+  df = df %>%
+    mutate(
+      head_unit = rep(NA, nrow(df)),
+      same_unit_as_head = rep(NA, nrow(df))
+    )
+  docs = unique(df$docId)
+  for (doc in docs) {
+    print(paste("Processing doc", doc))
+    curr_row_idx = which(df$docId == doc)
+    clause_info = get_attach_info_for_doc(df %>% filter(docId == doc))
+    df$head_unit[curr_row_idx] = clause_info$head_unit
+    df$same_unit_as_head[curr_row_idx] = clause_info$same_unit_as_head
+  }
+  df
+}
+doc_df = get_attach_info_for_sbc(sbc)
+write_csv(doc_df, here("output", "attach.csv"))
+```
+
+```{r}
+attach_summ = doc_df %>%
+  filter(text_lower %in% sbc_top200) %>%
+  group_by(text_lower) %>%
+  summarise(p = mean(same_unit_as_head, na.rm = T) / n())
+```
+
+## Entropy differences
+
+```{r}
+get_entropy = function(data) {
+  data = data[!is.na(data)]
+  cats = unique(data)
+  total = length(data)
+  prop = \(x) sum(data == x) / total
+  map(cats, \(x) -prop(x) * log(prop(x))) %>%
+    unlist %>%
+    sum
+}
+get_entropy(c(1, 2, 2))
+get_entropy(c(1, 1, 2))
+```
+
+
+```{r}
+get_min_entropy = function(front, back) {
+  min(get_entropy(front), get_entropy(back))
+}
+get_which_min_entropy = function(front, back) {
+  if(get_entropy(front) > get_entropy(back)){
+    "front"
+  } else {
+    "back"
+  }
+}
+get_min_entropy = function(front, back) {
+  min(get_entropy(front), get_entropy(back))
+}
+get_which_min_entropy = function(front, back) {
+  if(get_entropy(front) < get_entropy(back)){
+    "front"
+  } else {
+    "back"
+  }
+}
+
+get_min_entropy(c(2, 2, 1), c(1, 1, 2))
+get_which_min_entropy(c(1, 1, 1), c(1, 1, 2))
+```
+
+```{r}
+z_score = function(data) (data - mean(data)) / sd(data)
+```
+
+```{r}
+doc_df = doc_df %>% mutate(utteranceWordLen = sbc$utteranceWordLen)
+doc_df = doc_df %>% mutate(clauseOrder = sbc$clauseOrder, clauseBack = sbc$clauseBack)
+doc_df = doc_df %>% group_by(text_lower) %>%
+  mutate(
+    max_entropy_utt = get_max_entropy(utteranceOrder, utteranceWordLen - utteranceOrder + 1),
+    max_entropy_iu = get_max_entropy(order, back),
+    max_entropy_clause = get_max_entropy(clauseOrder, clauseBack),
+    which_max_entropy_utt = get_which_max_entropy(utteranceOrder, utteranceWordLen - utteranceOrder + 1),
+    which_max_entropy_iu = get_which_max_entropy(order, back),
+    which_max_entropy_clause = get_which_max_entropy(clauseOrder, clauseBack)
+  ) %>% ungroup
+write_csv(doc_df, here("output", "entropies_v1.csv"))
+```
+
+
+```{r}
+doc_df = doc_df %>% mutate(utteranceWordLen = sbc$utteranceWordLen)
+doc_df = doc_df %>% mutate(clauseOrder = sbc$clauseOrder, clauseBack = sbc$clauseBack)
+doc_df = doc_df %>% group_by(text_lower) %>%
+  mutate(
+    min_entropy_utt = get_min_entropy(utteranceOrder, utteranceWordLen - utteranceOrder + 1),
+    min_entropy_iu = get_min_entropy(order, back),
+    min_entropy_clause = get_min_entropy(clauseOrder, clauseBack),
+    which_min_entropy_utt = get_which_min_entropy(utteranceOrder, utteranceWordLen - utteranceOrder + 1),
+    which_min_entropy_iu = get_which_min_entropy(order, back),
+    which_min_entropy_clause = get_which_min_entropy(clauseOrder, clauseBack)
+  ) %>% ungroup
+write_csv(doc_df, here("output", "entropies_v1.csv"))
+```
+
+```{r}
+top200_entropy_ranks = doc_df %>%
+  filter(text_lower %in% sbc_top200) %>%
+  group_by(text_lower) %>%
+  summarise(max_entropy_utt = max_entropy_utt[1],
+           max_entropy_iu = max_entropy_iu[1],
+           max_entropy_clause = max_entropy_clause[1],
+           which_max_entropy_utt = which_max_entropy_utt[1],
+           which_max_entropy_iu = which_max_entropy_iu[1],
+           which_max_entropy_clause = which_max_entropy_clause[1],
+           min_entropy_utt = min_entropy_utt[1],
+           min_entropy_iu = min_entropy_iu[1],
+           min_entropy_clause = min_entropy_clause[1],
+           which_min_entropy_utt = which_min_entropy_utt[1],
+           which_min_entropy_iu = which_min_entropy_iu[1],
+           which_min_entropy_clause = which_min_entropy_clause[1]) %>%
+  mutate(rank_max_entropy_utt = rank(max_entropy_utt, ties.method = "first"),
+        rank_max_entropy_iu = rank(max_entropy_iu, ties.method = "first"),
+        rank_max_entropy_clause = rank(max_entropy_clause, ties.method = "first"),
+        z_max_entropy_utt = z_score(max_entropy_utt),
+        z_max_entropy_iu = z_score(max_entropy_iu),
+        z_max_entropy_clause = z_score(max_entropy_clause)) %>%
+  mutate(diff_utt_iu = abs(rank_max_entropy_utt - rank_max_entropy_iu),
+        diff_clause_iu = abs(rank_max_entropy_clause - rank_max_entropy_iu),
+        diff_utt_clause = abs(rank_max_entropy_clause - rank_max_entropy_utt)) %>%
+  mutate(rank_min_entropy_utt = rank(min_entropy_utt, ties.method = "first"),
+        rank_min_entropy_iu = rank(min_entropy_iu, ties.method = "first"),
+        rank_min_entropy_clause = rank(min_entropy_clause, ties.method = "first"),
+        z_min_entropy_utt = z_score(min_entropy_utt),
+        z_min_entropy_iu = z_score(min_entropy_iu),
+        z_min_entropy_clause = z_score(min_entropy_clause)) %>%
+  mutate(diff_utt_iu = abs(rank_min_entropy_utt - rank_min_entropy_iu),
+        diff_clause_iu = abs(rank_min_entropy_clause - rank_min_entropy_iu),
+        diff_utt_clause = abs(rank_min_entropy_clause - rank_min_entropy_utt))
+```
+
+## Extraclausality
+
+```{r}
+doc_df = read_csv(here("output", "entropies_v1.csv"))
+perc_extraclausal = doc_df %>%
+  filter(text_lower %in% sbc_top200) %>%
+  group_by(text_lower) %>%
+  summarise(p_extraclausal = sum(is.na(clauseOrder)) / n())
+```
+
+```{r}
+
+for (word in sbc_top200) {
+  perc = perc_extraclausal %>% filter(text_lower == word) %>% pull(p_extraclausal) * 100
+  get_staircase(
+    word,
+    clauseOrder,
+    clauseLen,
+    y_text = "Clause length",
+    x_text = "Place in clause",
+    min_len = 40,
+    sbc = doc_df
+  ) + ggtitle(paste0(word, " (", round(perc, 3), "% extraclausal)"))
+  ggsave(here("output", "staircase_word_in_clause", glue("{word}.png")))
+  ggsave(here("output", "staircase_word_in_clause", glue("{word}.svg")))
+}
+
+```
+
+## Summary
+
+```{r}
+top200_entropy_long = top200_entropy_ranks %>%
+  pivot_longer(starts_with("min_") | starts_with("max_") | starts_with("rank_") | starts_with("z_")) %>%
+  mutate(type = stringr::str_extract(name, r"((min|max)(?=_))")) %>%
+  mutate(position = stringr::str_extract(name, r"((?<=_)[a-z]+$)")) %>%
+  mutate(position = factor(position, levels = c("iu", "clause", "utt"), labels = c("IU", "CL", "UT")))
+
+max_z = top200_entropy_long %>% filter(stringr::str_detect(name, "z_")) %>% pull(value) %>% max
+min_z = top200_entropy_long %>% filter(stringr::str_detect(name, "z_")) %>% pull(value) %>% min
+```
+
+```{r}
+library(patchwork)
+
+get_unit_comparison_graph = function(word){
+  which_min_clause =  top200_entropy_long %>% filter(text_lower == word) %>% slice(1) %>% pull(which_min_entropy_clause)
+  which_min_utt =  top200_entropy_long %>% filter(text_lower == word) %>% slice(1) %>% pull(which_min_entropy_utt)
+  which_min_iu =  top200_entropy_long %>% filter(text_lower == word) %>% slice(1) %>% pull(which_min_entropy_iu)
+  x_labels = paste0(c("IU", "CL", "UT"), "\n",
+                    "(min = ",
+                    c(which_min_iu, which_min_clause, which_min_utt),
+                    ")")
+  top200_entropy_long %>%
+    filter(stringr::str_starts(name, r"(z_(?:min|max))")) %>%
+    filter(text_lower == word) %>%
+    ggplot(aes(x = position, y = value, colour = type, group = type)) +
+    geom_line() + geom_point() +
+    theme_minimal()   +
+    theme(legend.position = "bottom",
+         axis.text = element_text(size = 14),
+         axis.title.y = element_blank(),
+         title = element_text(size = 14),
+         legend.text = element_text(size = 14)) +
+    theme(legend.position = "bottom") +
+    scale_x_discrete(labels = x_labels) + 
+    ggtitle(glue("z-scores for '{word}'")) +
+    scale_y_continuous(limits = c(min_z, max_z)) +
+  top200_entropy_long %>%
+    filter(stringr::str_starts(name, r"(rank_(?:min|max))")) %>%
+    filter(text_lower == word) %>%
+    ggplot(aes(x = position, y = value, colour = type, group = type)) +
+    geom_line() + geom_point() +
+    theme_minimal()  +
+    theme(legend.position = "bottom",
+         axis.text = element_text(size = 14),
+         axis.title.y = element_blank(),
+         title = element_text(size = 14),
+         legend.text = element_text(size = 14)) +
+    scale_x_discrete(labels = x_labels) + 
+    ggtitle(glue("z-scores for '{word}'")) +
+    scale_y_continuous(limits = c(1, 200))
+}
+
+get_unit_comparison_graph("anything")
+```
+
+
+```{r}
+for (word in sbc_top200) {
+  get_unit_comparison_graph(word)
+  ggsave(here("output", "entropy_compare", glue("{word}.png")), height = 5, width = 8)
+  ggsave(here("output", "entropy_compare", glue("{word}.svg")), height = 5, width = 8)
+}
+```
+
+Send you graphs with the following info:
+- The min and min entropy of each case (ranks + z-scores)
+- Whether the min is front or the min is front for each case
+- % extraclausal
