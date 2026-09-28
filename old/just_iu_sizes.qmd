@@ -137,3 +137,202 @@ iulen_nums <- sbc %>%
   count()
 write_csv(iulen_nums, here("output", "length_bargraphs", "0_OVERALL_len.csv"))
 ```
+
+## 
+
+
+```{r}
+iulen_pos <- read_csv(here(
+  "output",
+  "length_bargraphs",
+  "0_words_len_proportion_pos.csv"
+))
+```
+
+
+```{r}
+pos_ordered <- iulen_pos %>%
+  group_by(PartOfSpeech) %>%
+  summarise(unitiu_prop = mean(`1`)) %>%
+  arrange(unitiu_prop) %>%
+  pull(PartOfSpeech)
+
+iulen_pos %>%
+  mutate(
+    PartOfSpeech = factor(PartOfSpeech, levels = pos_ordered),
+    unit_logged = log(`1` + .0001)
+  ) %>%
+  filter(!(PartOfSpeech %in% "UNK" | PartOfSpeech %in% "COMPL")) %>%
+  ggplot(aes(x = PartOfSpeech, y = unit_logged)) +
+  geom_violin() +
+  xlab("Majority part of speech") +
+  ylab("Proportion in single-word IUs (log scale)") +
+  scale_y_continuous(
+    limits = c(-10, 0),
+    breaks = seq(-10, 0, 1),
+    labels = round(exp(seq(-10, 0, 1)), 4)
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 14, angle = 20, hjust = 0.5),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 14)
+  ) +
+  coord_flip()
+```
+
+
+## Turn
+
+```{r}
+props_turn <- sbc %>%
+  group_by(turnSeq, docId) %>%
+  mutate(text = tolower(text)) %>%
+  mutate(turnLen = sum(kind == "word", na.rm = T)) %>%
+  ungroup() %>%
+  filter(text %in% sbc_top200) %>%
+  group_by(text, turnLen) %>%
+  count() %>%
+  ungroup() %>%
+  group_by(text) %>%
+  mutate(word_total = sum(n)) %>%
+  ungroup() %>%
+  mutate(prop = n / word_total)
+
+props_utt <- sbc %>%
+  group_by(utteranceSeq, docId) %>%
+  mutate(text = tolower(text)) %>%
+  mutate(uttLen = sum(kind == "word", na.rm = T)) %>%
+  ungroup() %>%
+  filter(text %in% sbc_top200) %>%
+  group_by(text, uttLen) %>%
+  count() %>%
+  ungroup() %>%
+  group_by(text) %>%
+  mutate(word_total = sum(n)) %>%
+  ungroup() %>%
+  mutate(prop = n / word_total)
+```
+
+
+```{r}
+for (word in sbc_top200) {
+  curr_df <- props_turn %>% filter(text == word)
+  ggplot(curr_df, aes(x = turnLen, y = n)) +
+    geom_col() +
+    ggtitle(word) +
+    scale_x_continuous(limits = c(0, 26))
+  ggsave(here("output", "length_bargraphs_turn", glue("{word}_len_turn.png")))
+}
+for (word in sbc_top200) {
+  curr_df <- props_utt %>% filter(text == word)
+  ggplot(curr_df, aes(x = uttLen, y = n)) +
+    geom_col() +
+    ggtitle(word) +
+    scale_x_continuous(limits = c(0, 26))
+  ggsave(here("output", "length_bargraphs_utt", glue("{word}_len_utt.png")))
+}
+```
+
+
+```{r}
+props_unit_turn <- props_turn %>%
+  select(prop, turnLen, text) %>%
+  pivot_wider(
+    values_from = "prop",
+    names_sort = TRUE,
+    names_from = "turnLen"
+  ) %>%
+  select(text, `1`) %>%
+  mutate(`1` = replace_na(`1`, 0)) %>%
+  rename(p_unit_turn = `1`)
+props_unit_utt <- props_utt %>%
+  select(prop, uttLen, text) %>%
+  pivot_wider(
+    values_from = "prop",
+    names_sort = TRUE,
+    names_from = "uttLen"
+  ) %>%
+  select(text, `1`) %>%
+  mutate(`1` = replace_na(`1`, 0)) %>%
+  rename(p_unit_utt = `1`)
+```
+
+
+
+
+```{r}
+iulen_pos %>%
+  left_join(props_unit_turn, by = c("TEXT" = "text")) %>%
+  left_join(props_unit_utt, by = c("TEXT" = "text")) %>%
+  filter(!(PartOfSpeech %in% "UNK")) %>%
+  mutate(
+    PartOfSpeech = factor(PartOfSpeech, levels = pos_ordered),
+    unit_logged = log(p_unit_turn + .0001)
+  ) %>%
+  ggplot(aes(x = PartOfSpeech, y = unit_logged)) +
+  geom_violin(bw = .5) +
+  xlab("Majority part of speech") +
+  ylab("Proportion in single-word turns (log scale)") +
+  scale_y_continuous(
+    limits = c(-10, 0),
+    breaks = seq(-10, 0, 1),
+    labels = round(exp(seq(-10, 0, 1)), 4)
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 14, angle = 20, hjust = 0.5),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 14)
+  ) +
+  coord_flip()
+```
+
+
+```{r}
+iulen_pos %>%
+  left_join(props_unit_turn, by = c("TEXT" = "text")) %>%
+  left_join(props_unit_utt, by = c("TEXT" = "text")) %>%
+  filter(!(PartOfSpeech %in% "UNK")) %>%
+  mutate(
+    PartOfSpeech = factor(PartOfSpeech, levels = pos_ordered),
+    unit_logged = log(p_unit_utt + .0001)
+  ) %>%
+  ggplot(aes(x = PartOfSpeech, y = unit_logged)) +
+  geom_violin(bw = .5) +
+  xlab("Majority part of speech") +
+  ylab("Proportion in single-word utterances (log scale)") +
+  scale_y_continuous(
+    limits = c(-10, 0),
+    breaks = seq(-10, 0, 1),
+    labels = round(exp(seq(-10, 0, 1)), 4)
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 14, angle = 20, hjust = 0.5),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 14)
+  ) +
+  coord_flip()
+```
+
+
+
+```{r}
+sbc %>%
+  group_by(unitId, docId) %>%
+  left_join(
+    iulen_pos %>% select(TEXT, PartOfSpeech),
+    by = c("text" = "TEXT")
+  ) %>%
+  mutate(text = tolower(text)) %>%
+  mutate(isInteract = (PartOfSpeech == "INTERACTIVE")) %>%
+  summarise(
+    unitLen = as.integer(sum(kind == "word", na.rm = T)),
+    PartOfSpeech = PartOfSpeech[1]
+  ) %>%
+  filter(unitLen != 0, !is.na(PartOfSpeech)) %>%
+  ggplot(aes(x = unitLen, col = isInteract)) +
+  geom_bar() +
+  scale_x_continuous(limits = c(0, 26))
+```
