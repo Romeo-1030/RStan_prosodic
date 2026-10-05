@@ -1,0 +1,215 @@
+
+```{r}
+library(here)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(stringr)
+library(lme4)
+library(sjPlot)
+library(marginaleffects)
+```
+
+
+```{r}
+sbc <- readRDS(here("data", 'sbc_post_turnv2.rds'))
+back_given_place_summ <- read_csv(here("data", 'conditional_back_summary.csv'))
+```
+
+
+```{r}
+sbc <- sbc %>% left_join(back_given_place_summ, by = c(text = "word", "place"))
+```
+
+```{r}
+sbc_noninit <- sbc %>%
+  mutate(has_overlap_onset = str_detect(transcript, "\\[")) %>%
+  filter(place != 1) %>%
+  filter(!is.na(mean_back))
+```
+
+```{r}
+ggplot(sbc_noninit, aes(y = as.numeric(has_overlap_onset), x = mean_back)) +
+  stat_
+```
+
+
+```{r}
+model_overlap_on_place_meanback <- glmer(
+  has_overlap_onset ~ place + mean_back + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+model_overlap_on_place <- glmer(
+  has_overlap_onset ~ place + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+model_overlap_on_meanback <- glmer(
+  has_overlap_onset ~ mean_back + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+```
+
+
+```{r}
+model_overlap_on_place_medianback <- glmer(
+  has_overlap_onset ~ place + median_back + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+model_overlap_on_medianback <- glmer(
+  has_overlap_onset ~ median_back + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+```
+
+
+```{r}
+model_overlap_on_place_modeback <- glmer(
+  has_overlap_onset ~ place + mode_back + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+model_overlap_on_modeback <- glmer(
+  has_overlap_onset ~ mode_back + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+```
+
+
+```{r}
+sjPlot::tab_model(model_overlap_on_place_meanback)
+```
+
+
+```{r}
+sjPlot::tab_model(
+  model_overlap_on_place_meanback,
+  model_overlap_on_place,
+  model_overlap_on_meanback,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+sjPlot::tab_model(
+  model_overlap_on_place_medianback,
+  model_overlap_on_place,
+  model_overlap_on_medianback,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+sjPlot::tab_model(
+  model_overlap_on_place_modeback,
+  model_overlap_on_place,
+  model_overlap_on_modeback,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+# Divide into BC or not
+
+
+```{r}
+# Opening-bracket label of each word, e.g. "[" or "[2" (NA if none)
+sbc <- sbc %>%
+  mutate(overlap_label = str_extract(transcript, "\\[\\d*"))
+
+# Next two units (within the same doc), their turnTypes, and whether the next has any overlap
+unit_info <- sbc %>%
+  group_by(docId, unitId) %>%
+  summarise(
+    unit_turnType = first(turnType),
+    unit_has_overlap = any(isOverlap %in% TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(docId, unitId) %>%
+  group_by(docId) %>%
+  mutate(
+    next_unitId = lead(unitId),
+    next_turnType = lead(unit_turnType),
+    next_has_overlap = lead(unit_has_overlap),
+    next2_unitId = lead(unitId, 2),
+    next2_turnType = lead(unit_turnType, 2)
+  ) %>%
+  ungroup() %>%
+  select(docId, unitId, next_unitId, next_turnType, next_has_overlap,
+         next2_unitId, next2_turnType)
+
+# Opening brackets in each unit, keyed so they can be matched from an earlier unit
+open_brackets <- sbc %>%
+  filter(!is.na(overlap_label)) %>%
+  distinct(docId, unitId, overlap_label)
+
+sbc <- sbc %>%
+  left_join(unit_info, by = c("docId", "unitId")) %>%
+  left_join(
+    open_brackets %>% mutate(next_has_match = TRUE),
+    by = c("docId", next_unitId = "unitId", "overlap_label")
+  ) %>%
+  left_join(
+    open_brackets %>% mutate(next2_has_match = TRUE),
+    by = c("docId", next2_unitId = "unitId", "overlap_label")
+  ) %>%
+  mutate(
+    next_has_match = coalesce(next_has_match, FALSE),
+    # Only look two units ahead if the next unit has some (other) overlapped portion
+    next2_has_match = !next_has_match &
+      coalesce(next_has_overlap, FALSE) &
+      coalesce(next2_has_match, FALSE),
+    has_overlap_onset = next_has_match | next2_has_match,
+    match_turnType = if_else(next_has_match, next_turnType, next2_turnType),
+    has_bc_onset = has_overlap_onset &
+      coalesce(str_detect(match_turnType, "^\\s*back"), FALSE),
+    has_turn_onset = has_overlap_onset & !has_bc_onset
+  ) %>%
+  select(-c(next_unitId, next_turnType, next_has_overlap, next2_unitId,
+            next2_turnType, next_has_match, next2_has_match, match_turnType))
+
+# Whether any word in the turn has a BC / turn onset (NA where turnSeq is missing)
+sbc <- sbc %>%
+  group_by(docId, turnSeq) %>%
+  mutate(
+    turn_has_bc_onset = if_else(is.na(turnSeq), NA, any(has_bc_onset)),
+    turn_has_turn_onset = if_else(is.na(turnSeq), NA, any(has_turn_onset))
+  ) %>%
+  ungroup()
+```
+
+```{r}
+sbc_noninit <- sbc %>%
+  filter(place != 1) %>%
+  filter(!is.na(mean_back))
+```
+
+
+```{r}
+model_overlap_on_modeback <- glmer(
+  has_overlap_onset ~ has_bc_onset * (mode_back + place) + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+model_overlap_on_modeback <- glmer(
+  has_overlap_onset ~ has_bc_onset * (mode_back + place) + (1 | docId),
+  data = sbc_noninit,
+  family = binomial(link = "logit")
+)
+```
+
+
+```{r}
+plot_predictions(
+  model_overlap_on_modeback,
+  condition = list("mode_back", has_bc_onset = TRUE)
+)
+plot_predictions(
+  model_overlap_on_modeback,
+  condition = list("mode_back", has_bc_onset = FALSE)
+)
+```
