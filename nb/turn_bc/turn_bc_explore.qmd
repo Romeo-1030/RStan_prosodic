@@ -139,8 +139,15 @@ unit_info <- sbc %>%
     next2_turnType = lead(unit_turnType, 2)
   ) %>%
   ungroup() %>%
-  select(docId, unitId, next_unitId, next_turnType, next_has_overlap,
-         next2_unitId, next2_turnType)
+  select(
+    docId,
+    unitId,
+    next_unitId,
+    next_turnType,
+    next_has_overlap,
+    next2_unitId,
+    next2_turnType
+  )
 
 # Opening brackets in each unit, keyed so they can be matched from an earlier unit
 open_brackets <- sbc %>%
@@ -169,8 +176,18 @@ sbc <- sbc %>%
       coalesce(str_detect(match_turnType, "^\\s*back"), FALSE),
     has_turn_onset = has_overlap_onset & !has_bc_onset
   ) %>%
-  select(-c(next_unitId, next_turnType, next_has_overlap, next2_unitId,
-            next2_turnType, next_has_match, next2_has_match, match_turnType))
+  select(
+    -c(
+      next_unitId,
+      next_turnType,
+      next_has_overlap,
+      next2_unitId,
+      next2_turnType,
+      next_has_match,
+      next2_has_match,
+      match_turnType
+    )
+  )
 
 # Whether any word in the turn has a BC / turn onset (NA where turnSeq is missing)
 sbc <- sbc %>%
@@ -190,14 +207,14 @@ sbc_noninit <- sbc %>%
 
 
 ```{r}
-model_overlap_on_modeback <- glmer(
-  has_overlap_onset ~ has_bc_onset * (mode_back + place) + (1 | docId),
-  data = sbc_noninit,
+model_overlap_on_modeback_bc <- glmer(
+  has_bc_onset ~ mode_back + place + (1 | docId),
+  data = sbc_noninit %>% filter(turn_has_bc_onset),
   family = binomial(link = "logit")
 )
-model_overlap_on_modeback <- glmer(
-  has_overlap_onset ~ has_bc_onset * (mode_back + place) + (1 | docId),
-  data = sbc_noninit,
+model_overlap_on_modeback_turn <- glmer(
+  has_turn_onset ~ mode_back + place + (1 | docId),
+  data = sbc_noninit %>% filter(turn_has_turn_onset),
   family = binomial(link = "logit")
 )
 ```
@@ -205,11 +222,35 @@ model_overlap_on_modeback <- glmer(
 
 ```{r}
 plot_predictions(
-  model_overlap_on_modeback,
-  condition = list("mode_back", has_bc_onset = TRUE)
-)
+  model_overlap_on_modeback_bc,
+  condition = list("mode_back")
+) +
+  scale_y_continuous(limits = c(0, .03))
+
 plot_predictions(
-  model_overlap_on_modeback,
-  condition = list("mode_back", has_bc_onset = FALSE)
+  model_overlap_on_modeback_turn,
+  condition = list("mode_back")
+) +
+  scale_y_continuous(limits = c(0, .03))
+```
+
+```{r}
+model_overlap_on_modeback_bc <- glmer(
+  has_bc_onset ~ mode_back * place + (1 | docId),
+  data = sbc_noninit %>% filter(turn_has_bc_onset),
+  family = binomial(link = "logit")
+)
+model_overlap_on_modeback_turn <- glmer(
+  has_turn_onset ~ mode_back * place + (1 | docId),
+  data = sbc_noninit %>% filter(turn_has_turn_onset),
+  family = binomial(link = "logit")
+)
+```
+
+
+```{r}
+plot_predictions(
+  model_overlap_on_modeback_bc,
+  condition = list("mode_back")
 )
 ```
