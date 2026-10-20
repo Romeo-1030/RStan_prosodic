@@ -209,4 +209,142 @@ sapply(points_in_vertex,
 ) %>%
   data.frame %>%
   write_csv(here("output", "mapper_result_seed688_int2_ov0_3_eps0_25.csv"))
+
+
+node_summary <- map_dfr(seq_along(points_in_vertex), function(i) {
+  idx <- points_in_vertex[[i]] + 1   
+  df_node <- posterior_param_simple[idx, ]
   
+  tibble(
+    Node = i,
+    `μ (mean IU length)` = mean(df_node$mu_mean, na.rm = TRUE),
+    `φ (dispersion)` = mean(df_node$phi_mean, na.rm = TRUE),
+    `Θ (rate)` = mean(df_node$theta_mean, na.rm = TRUE),
+    `λ (dispersion)` = mean(df_node$lambda_mean, na.rm = TRUE),
+    `N words` = nrow(df_node)
+  )
+}) %>%
+  mutate(
+    across(-c(Node, `N words`), ~ round(.x, 3))
+  )
+
+node_summary
+
+
+
+######################################################
+
+plot_mapper_colored_pos_gg <- function(mapper_result, 
+                                       posterior_param_simple, 
+                                       sbc,
+                                       target_pos = "ADJ",
+                                       alpha_param = NULL, 
+                                       main_title = NULL) {
+  
+  # most common POS
+  word_pos_majority <- sbc %>%
+    filter(!is.na(text), !is.na(POS_Spacy)) %>%
+    mutate(
+      text = tolower(text),
+      POS_Spacy = as.character(POS_Spacy)
+    ) %>%
+    count(text, POS_Spacy, name = "pos_count") %>%
+    group_by(text) %>%
+    slice_max(pos_count, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    select(word = text, main_pos = POS_Spacy)
+  
+
+  posterior_with_pos <- posterior_param_simple %>%
+    mutate(word = tolower(word)) %>%
+    left_join(word_pos_majority, by = "word") %>%
+    mutate(is_target_pos = main_pos == target_pos)
+  
+  # Build mapper graph
+  g_mapper <- igraph::graph.adjacency(mapper_result$adjacency, mode = "undirected")
+  
+  sim_matrix <- get_intersect_size_matrix(mapper_result$points_in_vertex)
+  g_mapper <- add_edge_weights(g_mapper, sim_matrix)
+  
+  # 4. Color value = percentage of target POS in each node
+  color_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
+    mean(posterior_with_pos$is_target_pos[idxs + 1], na.rm = TRUE)
+  })
+  
+  V(g_mapper)$color_val <- color_values
+  
+  
+  if (!is.null(alpha_param)) {
+    alpha_values <- sapply(mapper_result$points_in_vertex, function(idxs) {
+      mean(posterior_with_pos[[alpha_param]][idxs + 1], na.rm = TRUE)
+    })
+    V(g_mapper)$alpha_val <- alpha_values
+  } else {
+    V(g_mapper)$alpha_val <- 1
+  }
+  
+  # 6. Node size and label
+  V(g_mapper)$size <- sapply(mapper_result$points_in_vertex, length)
+  V(g_mapper)$node_id <- seq_len(igraph::vcount(g_mapper))
+  
+  # Same node order 
+  node_order <- c(
+    31, 21, 22, 19, 20, 30, 28, 27, 26, 29, 23, 24, 25, 4,
+    7, 2, 10, 1, 3, 9, 5, 11, 12, 13,
+    16, 6, 8, 18, 17, 14, 15
+  )
+  
+  perm <- purrr::map(1:31, \(x) which(node_order == x)) %>% unlist()
+  g_mapper <- permute(g_mapper, perm)
+  
+  set.seed(2)
+  
+  layout_dh <- layout_with_dh(g_mapper)
+  
+  net_data <- ggnetwork(g_mapper, layout = layout_dh)
+  
+  p <- ggplot(net_data, aes(x = x, y = y, xend = xend, yend = yend)) +
+    geom_edges(aes(alpha = log(weight)), color = "grey70",show.legend = FALSE) +
+    geom_nodes(aes(color = color_val, size = size)) +
+    geom_text(aes(label = node_id), size = 3, vjust = -0.8) +
+    scale_color_viridis_c(
+      name = paste0("% ", target_pos),
+      limits = c(0, 1),
+      labels = scales::percent
+    ) +
+    scale_alpha_continuous(range = c(0.2, 1), name = alpha_param) +
+    scale_size_continuous(range = c(3, 15)) + 
+    guides(size = guide_legend(title = "Words per node")) +
+    theme_void() +
+    labs(
+      title = ifelse(
+        is.null(main_title),
+        paste("Percentage of", target_pos, "words per node"),
+        main_title
+      )
+    )
+  
+  print(p)
+}
+
+plot_mapper_colored_pos_gg(
+  mapper_result = mapper_result,
+  posterior_param_simple = posterior_param_simple,
+  sbc = sbc,
+  target_pos = "INTJ"
+)
+  
+
+
+ggsave(
+  filename = "mapper_INTJ.svg",
+  plot = plot_mapper_colored_pos_gg(
+    mapper_result = mapper_result,
+    posterior_param_simple = posterior_param_simple,
+    sbc = sbc,
+    target_pos = "INTJ"
+  ),
+  device = svglite::svglite,
+  width = 10,
+  height = 8
+)

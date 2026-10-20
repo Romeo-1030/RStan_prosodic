@@ -1,0 +1,158 @@
+
+```{r}
+library(here)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(stringr)
+library(lme4)
+library(sjPlot)
+library(marginaleffects)
+```
+
+
+```{r}
+sbc <- readRDS(here("data", 'sbc_post_turnv2.rds'))
+back_given_place_summ <- read_csv(here("data", 'conditional_back_summary.csv'))
+```
+
+
+```{r}
+sbc <- sbc %>% left_join(back_given_place_summ, by = c(text = "word", "place"))
+```
+
+```{r}
+sbc_noninit <- sbc %>%
+  mutate(has_overlap_onset = str_detect(transcript, "\\[")) %>%
+  filter(place != 1) %>%
+  filter(!is.na(mean_back))
+```
+
+```{r}
+ggplot(sbc_noninit, aes(y = as.numeric(has_overlap_onset), x = mean_back)) +
+  stat_
+```
+
+
+# Model set
+
+All models are logistic GLMMs with a random intercept per document; they differ only in the fixed effects.
+
+```{r}
+library(tidymodels)
+library(multilevelmod)
+```
+
+```{r}
+# parsnip classification needs a factor outcome; glmer models P(second level) = P(TRUE)
+sbc_tm <- sbc_noninit %>%
+  mutate(has_overlap_onset = factor(has_overlap_onset, levels = c(FALSE, TRUE)))
+```
+
+```{r}
+back_vars <- c(meanback = "mean_back", medianback = "median_back", modeback = "mode_back")
+
+fixed_effects <- c(
+  list(place = "place"),
+  as.list(back_vars),
+  setNames(lapply(back_vars, \(v) c("place", v)), paste0("place_", names(back_vars)))
+)
+
+glmer_spec <- logistic_reg() %>% set_engine("glmer")
+
+# Formula preprocessors can't hold (1 | docId), so pass raw variables through
+# and give the mixed-model formula to the model instead.
+wf_set <- workflow_set(
+  preproc = lapply(fixed_effects, \(fe) {
+    workflow_variables(outcomes = has_overlap_onset, predictors = all_of(c(fe, "docId")))
+  }),
+  models = list(glmer = glmer_spec)
+)
+
+for (nm in names(fixed_effects)) {
+  wf_set <- update_workflow_model(
+    wf_set,
+    id = paste0(nm, "_glmer"),
+    spec = glmer_spec,
+    formula = reformulate(c(fixed_effects[[nm]], "(1 | docId)"), response = "has_overlap_onset")
+  )
+}
+
+wf_set
+```
+
+## Fit on the full data
+
+```{r}
+glmer_fits <- wf_set$wflow_id %>%
+  set_names() %>%
+  map(\(id) extract_workflow(wf_set, id) %>% fit(data = sbc_tm))
+
+glmer_engines <- map(glmer_fits, extract_fit_engine)
+```
+
+```{r}
+tibble(
+  wflow_id = names(glmer_engines),
+  AIC = map_dbl(glmer_engines, AIC),
+  BIC = map_dbl(glmer_engines, BIC),
+  logLik = map_dbl(glmer_engines, \(m) as.numeric(logLik(m))),
+  deviance = map_dbl(glmer_engines, deviance)
+) %>%
+  arrange(AIC)
+```
+
+```{r}
+sjPlot::tab_model(glmer_engines$place_meanback_glmer)
+```
+
+```{r}
+tab_back_comparison <- function(b) {
+  sjPlot::tab_model(
+    glmer_engines[[paste0("place_", b, "_glmer")]],
+    glmer_engines$place_glmer,
+    glmer_engines[[paste0(b, "_glmer")]],
+    show.aic = TRUE,
+    show.loglik = TRUE,
+    show.dev = TRUE
+  )
+}
+tab_back_comparison("meanback")
+tab_back_comparison("medianback")
+tab_back_comparison("modeback")
+```
+
+## Out-of-sample comparison
+
+Folds are grouped by document, so predictions are for unseen conversations (population-level, no random effects).
+
+```{r}
+set.seed(2200)
+doc_folds <- group_vfold_cv(sbc_tm, group = docId, v = 5)
+
+wf_res <- wf_set %>%
+  workflow_map(
+    "fit_resamples",
+    resamples = doc_folds,
+    metrics = metric_set(mn_log_loss, roc_auc, brier_class),
+    seed = 2200,
+    verbose = TRUE
+  )
+```
+
+```{r}
+rank_results(wf_res, rank_metric = "mn_log_loss") %>%
+  select(wflow_id, .metric, mean, std_err, rank)
+```
+
+```{r}
+autoplot(wf_res, metric = c("mn_log_loss", "roc_auc", "brier_class")) +
+  geom_text(aes(y = mean, label = wflow_id), angle = 90, nudge_x = 0.15, size = 3)
+```
+
+# Divide into BC or not
+
+
+```{r}
+
+```

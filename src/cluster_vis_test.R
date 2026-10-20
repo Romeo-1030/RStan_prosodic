@@ -20,14 +20,6 @@ opt <- parse_args(opt_parser)
 
 config <- fromJSON(txt = opt$config)  
 
-# Example expected config
-# {
-#   "seed": 613,
-#   "input_json": "Cluster_result/mapper_result_seed613_int4_ov0_3.json",
-#   "output_dir": "plots/",
-#   "color_params": ["mu_mean", "back"],
-#   "alpha_param": "mu_mean"
-# }
 
 input_json <- config$input_json
 output_dir <- config$output_dir

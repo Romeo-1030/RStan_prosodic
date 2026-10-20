@@ -1,0 +1,88 @@
+
+> model_overlap_on_place_meanback
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: has_overlap_onset ~ place + mean_back + (1 | docId)
+   Data: sbc_noninit
+      AIC       BIC    logLik -2*log(L)  df.resid 
+ 27147.82  27186.83 -13569.91  27139.82    127041 
+Random effects:
+ Groups Name        Std.Dev.
+ docId  (Intercept) 1.008   
+Number of obs: 127045, groups:  docId, 60
+Fixed Effects:
+(Intercept)        place    mean_back  
+   -3.01742     -0.04586     -0.26089  
+> anova(model_overlap_on_place_meanback)
+Analysis of Variance Table
+          npar  Sum Sq Mean Sq  F value
+place        1   2.034   2.034   2.0337
+mean_back    1 113.997 113.997 113.9974
+> model_overlap_on_place <- glmer(
++   has_overlap_onset ~ place + (1 | docId),
++   data = sbc_noninit,
++   family = binomial(link = "logit")
++ )
+> model_overlap_on_meanback <- glmer(
++   has_overlap_onset ~ mean_back + (1 | docId),
++   data = sbc_noninit,
++   family = binomial(link = "logit")
++ )
+> model_overlap_on_place
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: has_overlap_onset ~ place + (1 | docId)
+   Data: sbc_noninit
+      AIC       BIC    logLik -2*log(L)  df.resid 
+ 51138.48  51169.09 -25566.24  51132.48    198884 
+Random effects:
+ Groups Name        Std.Dev.
+ docId  (Intercept) 1.078   
+Number of obs: 198887, groups:  docId, 60
+Fixed Effects:
+(Intercept)        place  
+   -4.03806      0.02679  
+> model_overlap_on_meanback
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: has_overlap_onset ~ mean_back + (1 | docId)
+   Data: sbc_noninit
+      AIC       BIC    logLik -2*log(L)  df.resid 
+ 27167.55  27196.81 -13580.78  27161.55    127042 
+Random effects:
+ Groups Name        Std.Dev.
+ docId  (Intercept) 1.013   
+Number of obs: 127045, groups:  docId, 60
+Fixed Effects:
+(Intercept)    mean_back  
+    -3.4445      -0.1966  
+> summary(model_overlap_on_place_meanback)
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: has_overlap_onset ~ place + mean_back + (1 | docId)
+   Data: sbc_noninit
+
+      AIC       BIC    logLik -2*log(L)  df.resid 
+  27147.8   27186.8  -13569.9   27139.8    127041 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.3843 -0.1887 -0.1360 -0.0948 23.5879 
+
+Random effects:
+ Groups Name        Variance Std.Dev.
+ docId  (Intercept) 1.017    1.008   
+Number of obs: 127045, groups:  docId, 60
+
+Fixed effects:
+             Estimate Std. Error z value Pr(>|z|)    
+(Intercept) -3.017418   0.176422 -17.103   <2e-16 ***
+place       -0.045864   0.009946  -4.611    4e-06 ***
+mean_back   -0.260895   0.024435 -10.677   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+          (Intr) place 
+place     -0.507       
+mean_back -0.621  0.544

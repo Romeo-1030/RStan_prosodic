@@ -157,9 +157,9 @@ Mix_Pois_Quantities <- function(model, word) {
   final = data.frame()
   # iterate through 4000 times
   for (i in 3801:4000) {
-      
+    
     nb_length <- rnbinom(length(word$length_minus_1), size = nb_phi$phi[i], 
-                        prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
+                         prob = nb_phi$phi[i] / (nb_phi$phi[i] + nb_mu$mu[i]))
     max_length <- max(nb_length)
     
     nb_place1 <- c()
@@ -173,7 +173,7 @@ Mix_Pois_Quantities <- function(model, word) {
         nb_place1 <- c(nb_place1, trun_mix(nb_theta1$theta1[i], nb_lambda1$lambda1[i],
                                            nb_length[k], max_length))
         nb_length1 <- c(nb_length1, nb_length[k])
-  
+        
       } else {
         nb_place2 <- c(nb_place2, trun_mix(nb_theta2$theta2[i], nb_lambda2$lambda2[i],
                                            nb_length[k], max_length))
@@ -220,7 +220,7 @@ trun_hurdle <- function(theta, lambda, psi_intercept, psi_slope, alpha_intercept
     cdf$trun_pmf[cdf$Value > unit_length] <- 0
     
     quantities <- sample(cdf$Value, size = 1, replace = TRUE, prob = cdf$trun_pmf)
-  
+    
   }
   
   # 2. hurdle 1 place case
@@ -345,7 +345,7 @@ trun_hurdle_rev <- function(theta, lambda, psi_intercept, psi_slope, alpha_inter
     for (y in 0:(max_length - 1)) {  # Exclude the last element
       prob <- (1 - psi) * ((theta * (theta + lambda * y)^(y - 1)) * exp(-theta - lambda * y) / factorial(y))/
         (1 - lpos_max_length)
-        
+      
       prob_list <- c(prob_list, prob)
       y_list <- c(y_list, y)
     }
@@ -449,7 +449,7 @@ Hurdle_Pois_Quantities_rev <- function(model, word, back = F, hurdle = -1) {
                                               alpha_intercept, alpha_slope,
                                               length_val, length_val, hurdle))
     }
-
+    
     if (back == T) {
       nb_place <- nb_length - nb_place
     }
@@ -658,6 +658,61 @@ process_word_hurdle <- function(word, hurdle_model, cri, i, error_words, hurdle_
     return(NULL)  # Return NULL to handle this case
   })
   return(result)
+}
+
+
+
+## plotting 
+new_plotting <- function(all_df, result, word) {
+  
+  # make sure these are numeric
+  all_df <- all_df %>%
+    mutate(
+      nb_place = as.numeric(as.character(nb_place)),
+      nb_length = as.numeric(as.character(nb_length))
+    )
+  
+  result <- result %>%
+    mutate(
+      nb_place = as.numeric(as.character(nb_place)),
+      nb_length = as.numeric(as.character(nb_length))
+    )
+  
+  labels_map <- result %>% 
+    group_by(nb_length) %>% 
+    summarise(n.y = unique(n.y), .groups = "drop") %>%
+    mutate(nb_length = as.character(nb_length)) %>%
+    deframe()
+  
+  custom_labeller <- function(nb_length) {
+    sapply(nb_length, function(x) {
+      x_num <- as.numeric(as.character(x))
+      paste(x_num + 1, "size:", labels_map[as.character(x_num)])
+    })
+  }
+  
+  p <- ggplot(data = all_df, aes(x = nb_place + 1, y = n.x / n.y)) +
+    geom_point(alpha = .015, position = "jitter")
+  
+  p <- p + 
+    facet_wrap(~ nb_length, labeller = as_labeller(custom_labeller)) + 
+    geom_point(
+      data = result %>% filter(nb_length <= 14),
+      aes(x = nb_place + 1, y = n.x / n.y),
+      color = "red"
+    ) +
+    labs(title = word) +
+    xlab("place") +  
+    ylab("Count Proportion") +
+    theme_bw(base_size = 16) +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 20),
+      axis.title = element_text(size = 18),
+      axis.text = element_text(size = 14),
+      strip.text = element_text(size = 15)
+    )
+  
+  return(p)
 }
 
 

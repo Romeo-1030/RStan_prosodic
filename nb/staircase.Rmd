@@ -11,9 +11,7 @@ load(here("data", "sbc.Rdata"))
 ```
 
 Get fixed unit length values:
-```{r}
-sbc = sbc %>% group_by(docId, unitId) %>% mutate(unitWordLen = sum(kind == "word")) %>% ungroup
-```
+
 
 Import mapper result:
 ```{r}
@@ -29,6 +27,7 @@ posterior_df <- read_csv(here("data/posterior_param_simple.csv"))
 
 Code for producing staircases:
 ```{r}
+setwd("~/Desktop/Projects/RStan_prosodic")
 get_avg_starfish <- function(words, node_id) {
   counts <- sbc %>%
     filter(text %in% words) %>%
@@ -83,6 +82,44 @@ reversed <- posterior_df %>%
   filter((back == FALSE & hurdle_place < 0) | (back == TRUE & hurdle_place >= 0))
 
 ```
+```{r}
+setwd("~/Desktop/Projects/RStan_prosodic")
+node_word_table <- tibble(
+  node_id = seq_along(mapper$points_in_vertex),
+  words = map_chr(mapper$points_in_vertex, ~ paste(posterior_df$word[.x + 1], collapse = ", "))
+)
+
+write_csv(node_word_table, "output/mapper_staircase/node_words.csv")
 
 
+node_param_df <- node_word_map %>%
+  left_join(posterior_df, by = "word")
 
+```
+
+
+```{r}
+node_word_long <- tibble(
+  node_id = rep(seq_along(mapper$points_in_vertex),
+                lengths(mapper$points_in_vertex)),
+  word_index = unlist(mapper$points_in_vertex) + 1
+) %>%
+  mutate(word = posterior_df$word[word_index])
+
+node_param_long <- node_word_long %>%
+  left_join(posterior_df, by = "word")
+
+node_param_means <- node_param_long %>%
+  group_by(node_id) %>%
+  summarise(
+    across(
+      where(is.numeric),
+      ~ mean(.x, na.rm = TRUE),
+      .names = "{.col}_mean"
+    ),
+    n_words = n_distinct(word),
+    .groups = "drop"
+  )
+
+
+```

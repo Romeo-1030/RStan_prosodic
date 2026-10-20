@@ -258,16 +258,35 @@ final_prior_statistics <- bind_rows(prior_statistics_list)
 
 # find what is common in the real one but not the fake one
 
-all_df %>% filter(iteration <= 5)
+p <- ggplot(
+  all_df %>% filter(iteration <= 10),
+  aes(x = nb_length, col = as.factor(iteration))
+) +
+  geom_density() +
+  labs(x = "UnitLength")
 
-p <- ggplot(all_df %>% filter(iteration <= 10), aes(x = nb_length, col = as.factor(iteration))) + geom_density()
 print(p)
 
 
-sbc %>% filter(sbc$text_lower %in% sbc_top200)
+load("data/sbc.Rdata")
 
-p_real <- ggplot(sbc %>% filter(sbc$text_lower %in% sbc_top200), aes(x = length_minus_1, col = as.factor(text_lower))) + geom_density() + theme(legend.position = "none") + scale_x_continuous(limits = c(0,10)) + scale_y_continuous(limits = c(0,10))
+sbc %>% filter(sbc$text_lower %in% sbc_top200)
+sbc$place_minus_1 = sbc$place - 1
+sbc$length_minus_1 = sbc$unitWordLen - 1
+
+
+p_real <- ggplot(
+  sbc %>% filter(sbc$text_lower %in% sbc_top200),
+  aes(x = length_minus_1, col = as.factor(text_lower))
+) +
+  geom_density() +
+  theme(legend.position = "none") +
+  scale_x_continuous(limits = c(0, 10)) +
+  scale_y_continuous(limits = c(0, 10)) +
+  labs(x = "UnitLength")
+
 print(p_real)
+
 
 sbc$length_minus_1
 
