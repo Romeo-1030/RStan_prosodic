@@ -10,9 +10,27 @@ library(sjPlot)
 library(marginaleffects)
 ```
 
+```{r}
+# Fitted models are cached in output/turn_bc_models/; set refit_models <- TRUE to refit
+model_dir <- here("output", "turn_bc_models")
+dir.create(model_dir, showWarnings = FALSE, recursive = TRUE)
+refit_models <- FALSE
+
+fit_or_load <- function(name, expr) {
+  path <- file.path(model_dir, paste0(name, ".rds"))
+  if (!refit_models && file.exists(path)) {
+    readRDS(path)
+  } else {
+    model <- expr
+    saveRDS(model, path)
+    model
+  }
+}
+```
+
 
 ```{r}
-sbc <- readRDS(here("data", 'sbc_post_turnv2.rds'))
+sbc <- readRDS(here("data", 'turns_updated.rds'))
 back_given_place_summ <- read_csv(here("data", 'conditional_back_summary.csv'))
 ```
 
@@ -29,55 +47,54 @@ sbc_noninit <- sbc %>%
 ```
 
 ```{r}
-ggplot(sbc_noninit, aes(y = as.numeric(has_overlap_onset), x = mean_back)) +
-  stat_
+ggplot(sbc_noninit, aes(y = as.numeric(has_overlap_onset), x = mean_back))
 ```
 
 
 ```{r}
-model_overlap_on_place_meanback <- glmer(
+model_overlap_on_place_meanback <- fit_or_load("model_overlap_on_place_meanback", glmer(
   has_overlap_onset ~ place + mean_back + (1 | docId),
   data = sbc_noninit,
   family = binomial(link = "logit")
-)
-model_overlap_on_place <- glmer(
+))
+model_overlap_on_place <- fit_or_load("model_overlap_on_place", glmer(
   has_overlap_onset ~ place + (1 | docId),
   data = sbc_noninit,
   family = binomial(link = "logit")
-)
-model_overlap_on_meanback <- glmer(
+))
+model_overlap_on_meanback <- fit_or_load("model_overlap_on_meanback", glmer(
   has_overlap_onset ~ mean_back + (1 | docId),
   data = sbc_noninit,
   family = binomial(link = "logit")
-)
+))
 ```
 
 
 ```{r}
-model_overlap_on_place_medianback <- glmer(
+model_overlap_on_place_medianback <- fit_or_load("model_overlap_on_place_medianback", glmer(
   has_overlap_onset ~ place + median_back + (1 | docId),
   data = sbc_noninit,
   family = binomial(link = "logit")
-)
-model_overlap_on_medianback <- glmer(
+))
+model_overlap_on_medianback <- fit_or_load("model_overlap_on_medianback", glmer(
   has_overlap_onset ~ median_back + (1 | docId),
   data = sbc_noninit,
   family = binomial(link = "logit")
-)
+))
 ```
 
 
 ```{r}
-model_overlap_on_place_modeback <- glmer(
+model_overlap_on_place_modeback <- fit_or_load("model_overlap_on_place_modeback", glmer(
   has_overlap_onset ~ place + mode_back + (1 | docId),
   data = sbc_noninit,
   family = binomial(link = "logit")
-)
-model_overlap_on_modeback <- glmer(
+))
+model_overlap_on_modeback <- fit_or_load("model_overlap_on_modeback", glmer(
   has_overlap_onset ~ mode_back + (1 | docId),
   data = sbc_noninit,
   family = binomial(link = "logit")
-)
+))
 ```
 
 
@@ -207,16 +224,16 @@ sbc_noninit <- sbc %>%
 
 
 ```{r}
-model_overlap_on_modeback_bc <- glmer(
+model_overlap_on_modeback_bc <- fit_or_load("model_overlap_on_modeback_bc", glmer(
   has_bc_onset ~ mode_back + place + (1 | docId),
   data = sbc_noninit %>% filter(turn_has_bc_onset),
   family = binomial(link = "logit")
-)
-model_overlap_on_modeback_turn <- glmer(
+))
+model_overlap_on_modeback_turn <- fit_or_load("model_overlap_on_modeback_turn", glmer(
   has_turn_onset ~ mode_back + place + (1 | docId),
   data = sbc_noninit %>% filter(turn_has_turn_onset),
   family = binomial(link = "logit")
-)
+))
 ```
 
 
@@ -235,22 +252,34 @@ plot_predictions(
 ```
 
 ```{r}
-model_overlap_on_modeback_bc <- glmer(
+model_overlap_on_modeback_bc_int <- fit_or_load("model_overlap_on_modeback_bc_int", glmer(
   has_bc_onset ~ mode_back * place + (1 | docId),
   data = sbc_noninit %>% filter(turn_has_bc_onset),
   family = binomial(link = "logit")
-)
-model_overlap_on_modeback_turn <- glmer(
+))
+model_overlap_on_modeback_turn_int <- fit_or_load("model_overlap_on_modeback_turn_int", glmer(
   has_turn_onset ~ mode_back * place + (1 | docId),
   data = sbc_noninit %>% filter(turn_has_turn_onset),
   family = binomial(link = "logit")
-)
+))
 ```
 
 
 ```{r}
 plot_predictions(
-  model_overlap_on_modeback_bc,
+  model_overlap_on_modeback_bc_int,
   condition = list("mode_back")
+)
+```
+
+
+```{r}
+sjPlot::tab_model(
+  model_overlap_on_place_modeback,
+  model_overlap_on_place,
+  model_overlap_on_modeback,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
 )
 ```
