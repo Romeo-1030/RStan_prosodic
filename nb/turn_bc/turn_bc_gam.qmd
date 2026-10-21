@@ -1,0 +1,338 @@
+---
+title: "Turn / BC onsets: GAMs"
+---
+
+The `place * back + place * mode_back` models from `turn_bc_explore.qmd`, refitted as GAMs: a smooth for each main effect, tensor-product interactions (`ti`) for place × back and place × mode back, and a random intercept for document.
+
+```{r}
+library(here)
+library(dplyr)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(lme4)
+library(mgcv)
+```
+
+```{r}
+# Fitted models are cached in output/turn_bc_gams/; set refit_models <- TRUE to refit
+model_dir <- here("output", "turn_bc_gams")
+dir.create(model_dir, showWarnings = FALSE, recursive = TRUE)
+refit_models <- FALSE
+
+fit_or_load <- function(name, expr) {
+  path <- file.path(model_dir, paste0(name, ".rds"))
+  if (!refit_models && file.exists(path)) {
+    readRDS(path)
+  } else {
+    model <- expr
+    saveRDS(model, path)
+    model
+  }
+}
+```
+
+# Data
+
+Same construction as `turn_bc_explore.qmd` (see "Divide into BC or not" there).
+
+```{r}
+sbc <- readRDS(here("data", "turns_updated.rds"))
+back_given_place_summ <- read_csv(here("data", "conditional_back_summary.csv"))
+sbc <- sbc %>% left_join(back_given_place_summ, by = c(text = "word", "place"))
+```
+
+```{r}
+sbc <- sbc %>%
+  mutate(overlap_label = str_extract(transcript, "\\[\\d*"))
+
+unit_info <- sbc %>%
+  group_by(docId, unitId) %>%
+  summarise(
+    unit_turnType = first(turnType),
+    unit_has_overlap = any(isOverlap %in% TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(docId, unitId) %>%
+  group_by(docId) %>%
+  mutate(
+    next_unitId = lead(unitId),
+    next_turnType = lead(unit_turnType),
+    next_has_overlap = lead(unit_has_overlap),
+    next2_unitId = lead(unitId, 2),
+    next2_turnType = lead(unit_turnType, 2)
+  ) %>%
+  ungroup() %>%
+  select(
+    docId,
+    unitId,
+    next_unitId,
+    next_turnType,
+    next_has_overlap,
+    next2_unitId,
+    next2_turnType
+  )
+
+open_brackets <- sbc %>%
+  filter(!is.na(overlap_label)) %>%
+  distinct(docId, unitId, overlap_label)
+
+sbc <- sbc %>%
+  left_join(unit_info, by = c("docId", "unitId")) %>%
+  left_join(
+    open_brackets %>% mutate(next_has_match = TRUE),
+    by = c("docId", next_unitId = "unitId", "overlap_label")
+  ) %>%
+  left_join(
+    open_brackets %>% mutate(next2_has_match = TRUE),
+    by = c("docId", next2_unitId = "unitId", "overlap_label")
+  ) %>%
+  mutate(
+    next_has_match = coalesce(next_has_match, FALSE),
+    next2_has_match = !next_has_match &
+      coalesce(next_has_overlap, FALSE) &
+      coalesce(next2_has_match, FALSE),
+    has_overlap_onset = next_has_match | next2_has_match,
+    match_turnType = if_else(next_has_match, next_turnType, next2_turnType),
+    has_bc_onset = has_overlap_onset &
+      coalesce(str_detect(match_turnType, "^\\s*back"), FALSE),
+    # Only full, minimal or terminated (abandoned) turns; laughter, vocalisations etc. are neither
+    has_turn_onset = has_overlap_onset &
+      coalesce(str_detect(match_turnType, "^\\s*(full|minimal|terminated)"), FALSE)
+  ) %>%
+  group_by(docId, turnSeq) %>%
+  mutate(
+    turn_has_bc_onset = if_else(is.na(turnSeq), NA, any(has_bc_onset)),
+    turn_has_turn_onset = if_else(is.na(turnSeq), NA, any(has_turn_onset))
+  ) %>%
+  ungroup()
+```
+
+```{r}
+# As sbc_back in turn_bc_explore.qmd; docId as a factor for the random effect smooth
+sbc_back <- sbc %>%
+  filter(place != 1, !is.na(mean_back), !is.na(back), !is.na(mode_back)) %>%
+  mutate(docId = factor(docId))
+
+sbc_back_bc <- sbc_back %>% filter(turn_has_bc_onset)
+sbc_back_turn <- sbc_back %>% filter(turn_has_turn_onset)
+
+sbc_back %>%
+  summarise(across(c(place, back, mode_back), \(x) n_distinct(x)))
+```
+
+# Models
+
+`mode_back` only takes `r n_distinct(sbc_back$mode_back)` values, so its basis is kept small. `ti()` terms hold only the interaction, so the main-effect smooths match the main effects in the GLMMs.
+
+```{r}
+gam_formula <- function(outcome) {
+  reformulate(
+    c(
+      "s(place, k = 8)",
+      "s(back, k = 8)",
+      "s(mode_back, k = 5)",
+      "ti(place, back, k = c(6, 6))",
+      "ti(place, mode_back, k = c(6, 5))",
+      "s(docId, bs = 're')"
+    ),
+    response = outcome
+  )
+}
+
+gam_bc_place_back_modeback_int <- fit_or_load(
+  "gam_bc_place_back_modeback_int",
+  bam(
+    gam_formula("has_bc_onset"),
+    data = sbc_back_bc,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  )
+)
+gam_turn_place_back_modeback_int <- fit_or_load(
+  "gam_turn_place_back_modeback_int",
+  bam(
+    gam_formula("has_turn_onset"),
+    data = sbc_back_turn,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  )
+)
+```
+
+```{r}
+summary(gam_bc_place_back_modeback_int)
+summary(gam_turn_place_back_modeback_int)
+```
+
+Basis size checks (low k-index with a small p-value suggests k is too small):
+
+```{r}
+k.check(gam_bc_place_back_modeback_int)
+k.check(gam_turn_place_back_modeback_int)
+```
+
+Do the smooths beat linear terms? AIC from `bam` is conditional on the document effects (they count as effective df), so it can't be set against the glmer AIC. Compare instead with the linear model fitted the same way:
+
+```{r}
+linear_formula <- function(outcome) {
+  reformulate(
+    c("place * back", "place * mode_back", "s(docId, bs = 're')"),
+    response = outcome
+  )
+}
+
+gam_bc_place_back_modeback_int_linear <- fit_or_load(
+  "gam_bc_place_back_modeback_int_linear",
+  bam(
+    linear_formula("has_bc_onset"),
+    data = sbc_back_bc,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  )
+)
+gam_turn_place_back_modeback_int_linear <- fit_or_load(
+  "gam_turn_place_back_modeback_int_linear",
+  bam(
+    linear_formula("has_turn_onset"),
+    data = sbc_back_turn,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  )
+)
+
+AIC(gam_bc_place_back_modeback_int_linear, gam_bc_place_back_modeback_int)
+AIC(gam_turn_place_back_modeback_int_linear, gam_turn_place_back_modeback_int)
+```
+
+Sanity check: the linear `bam` fits should reproduce the glmer coefficients.
+
+```{r}
+glmm_dir <- here("output", "turn_bc_models")
+compare_coefs <- function(glmm_name, gam) {
+  beta <- fixef(readRDS(file.path(glmm_dir, paste0(glmm_name, ".rds"))))
+  cbind(glmer = beta, bam = coef(gam)[names(beta)])
+}
+compare_coefs(
+  "model_bc_place_back_modeback_int",
+  gam_bc_place_back_modeback_int_linear
+)
+compare_coefs(
+  "model_turn_place_back_modeback_int",
+  gam_turn_place_back_modeback_int_linear
+)
+```
+
+# Smooths
+
+```{r}
+# Partial effect of each smooth (log-odds, centred), with 95% CIs
+plot_main_smooths <- function(model, data) {
+  vars <- c("place", "back", "mode_back")
+  lapply(vars, \(v) {
+    grid <- data.frame(
+      place = median(data$place),
+      back = median(data$back),
+      mode_back = median(data$mode_back),
+      docId = data$docId[1]
+    )
+    grid <- grid[rep(1, 100), ]
+    grid[[v]] <- seq(min(data[[v]]), max(data[[v]]), length.out = 100)
+    term <- sprintf("s(%s)", v)
+    pr <- predict(model, grid, type = "terms", terms = term, se.fit = TRUE)
+    tibble(
+      variable = v,
+      x = grid[[v]],
+      fit = pr$fit[, term],
+      se = pr$se.fit[, term]
+    )
+  }) %>%
+    bind_rows() %>%
+    ggplot(aes(x, fit)) +
+    geom_hline(yintercept = 0, colour = "grey60") +
+    geom_ribbon(aes(ymin = fit - 1.96 * se, ymax = fit + 1.96 * se), alpha = 0.2) +
+    geom_line() +
+    facet_wrap(~variable, scales = "free_x") +
+    labs(x = NULL, y = "Partial effect (log-odds)")
+}
+
+plot_main_smooths(gam_bc_place_back_modeback_int, sbc_back_bc) +
+  ggtitle("BC onset")
+plot_main_smooths(gam_turn_place_back_modeback_int, sbc_back_turn) +
+  ggtitle("Turn onset")
+```
+
+Fitted surfaces (log-odds; the other variable at its typical value, blank where there's no data nearby):
+
+```{r}
+par(mfrow = c(1, 2))
+vis.gam(
+  gam_bc_place_back_modeback_int,
+  view = c("place", "back"),
+  plot.type = "contour",
+  too.far = 0.1,
+  main = "BC: place x back"
+)
+vis.gam(
+  gam_bc_place_back_modeback_int,
+  view = c("place", "mode_back"),
+  plot.type = "contour",
+  too.far = 0.1,
+  main = "BC: place x mode back"
+)
+vis.gam(
+  gam_turn_place_back_modeback_int,
+  view = c("place", "back"),
+  plot.type = "contour",
+  too.far = 0.1,
+  main = "Turn: place x back"
+)
+vis.gam(
+  gam_turn_place_back_modeback_int,
+  view = c("place", "mode_back"),
+  plot.type = "contour",
+  too.far = 0.1,
+  main = "Turn: place x mode back"
+)
+par(mfrow = c(1, 1))
+```
+
+# Predictions
+
+P(onset) against mode back at several places, with back held at its median and the document effect excluded. As in `turn_bc_explore.qmd`, but only at place / mode back combinations with at least 20 words, since the smooths are unconstrained beyond the data.
+
+```{r}
+place_vals <- c(2, 3, 4, 5, 6, 10, 14)
+
+plot_predictions_gam <- function(model, data, min_n = 20) {
+  grid <- data %>%
+    filter(place %in% place_vals) %>%
+    count(place, mode_back) %>%
+    filter(n >= min_n) %>%
+    mutate(back = median(data$back), docId = data$docId[1])
+  pr <- predict(model, grid, exclude = "s(docId)", se.fit = TRUE)
+  grid %>%
+    mutate(
+      p = plogis(pr$fit),
+      lo = plogis(pr$fit - 1.96 * pr$se.fit),
+      hi = plogis(pr$fit + 1.96 * pr$se.fit)
+    ) %>%
+    ggplot(aes(mode_back, p, colour = factor(place))) +
+    geom_line(position = position_dodge(width = 0.3)) +
+    geom_pointrange(
+      aes(ymin = lo, ymax = hi),
+      position = position_dodge(width = 0.3),
+      size = 0.3
+    ) +
+    labs(colour = "place", y = "P(onset)")
+}
+
+plot_predictions_gam(gam_bc_place_back_modeback_int, sbc_back_bc) +
+  ggtitle("BC onset")
+plot_predictions_gam(gam_turn_place_back_modeback_int, sbc_back_turn) +
+  ggtitle("Turn onset")
+```

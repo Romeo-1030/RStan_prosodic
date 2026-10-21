@@ -477,6 +477,46 @@ model_turn_place_back_modeback_int <- fit_or_load(
 )
 ```
 
+Adding a quadratic place effect to the full interaction models:
+
+```{r}
+model_bc_place_back_modeback_int_sq <- fit_or_load(
+  "model_bc_place_back_modeback_int_sq",
+  glmer(
+    has_bc_onset ~ place * back + place * mode_back + I(place^2) + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back_modeback_int_sq <- fit_or_load(
+  "model_turn_place_back_modeback_int_sq",
+  glmer(
+    has_turn_onset ~ place * back + place * mode_back + I(place^2) + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+Does the quadratic place term help (nested, so LRT):
+
+```{r}
+anova(model_bc_place_back_modeback_int, model_bc_place_back_modeback_int_sq)
+anova(model_turn_place_back_modeback_int, model_turn_place_back_modeback_int_sq)
+```
+
+```{r}
+sjPlot::tab_model(
+  model_bc_place_back_modeback_int,
+  model_bc_place_back_modeback_int_sq,
+  model_turn_place_back_modeback_int,
+  model_turn_place_back_modeback_int_sq,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
 Mode back vs actual back, with interactions (non-nested, so compare AIC):
 
 ```{r}
