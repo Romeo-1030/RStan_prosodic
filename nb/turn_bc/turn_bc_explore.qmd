@@ -52,49 +52,70 @@ ggplot(sbc_noninit, aes(y = as.numeric(has_overlap_onset), x = mean_back))
 
 
 ```{r}
-model_overlap_on_place_meanback <- fit_or_load("model_overlap_on_place_meanback", glmer(
-  has_overlap_onset ~ place + mean_back + (1 | docId),
-  data = sbc_noninit,
-  family = binomial(link = "logit")
-))
-model_overlap_on_place <- fit_or_load("model_overlap_on_place", glmer(
-  has_overlap_onset ~ place + (1 | docId),
-  data = sbc_noninit,
-  family = binomial(link = "logit")
-))
-model_overlap_on_meanback <- fit_or_load("model_overlap_on_meanback", glmer(
-  has_overlap_onset ~ mean_back + (1 | docId),
-  data = sbc_noninit,
-  family = binomial(link = "logit")
-))
+model_overlap_on_place_meanback <- fit_or_load(
+  "model_overlap_on_place_meanback",
+  glmer(
+    has_overlap_onset ~ place + mean_back + (1 | docId),
+    data = sbc_noninit,
+    family = binomial(link = "logit")
+  )
+)
+model_overlap_on_place <- fit_or_load(
+  "model_overlap_on_place",
+  glmer(
+    has_overlap_onset ~ place + (1 | docId),
+    data = sbc_noninit,
+    family = binomial(link = "logit")
+  )
+)
+model_overlap_on_meanback <- fit_or_load(
+  "model_overlap_on_meanback",
+  glmer(
+    has_overlap_onset ~ mean_back + (1 | docId),
+    data = sbc_noninit,
+    family = binomial(link = "logit")
+  )
+)
 ```
 
 
 ```{r}
-model_overlap_on_place_medianback <- fit_or_load("model_overlap_on_place_medianback", glmer(
-  has_overlap_onset ~ place + median_back + (1 | docId),
-  data = sbc_noninit,
-  family = binomial(link = "logit")
-))
-model_overlap_on_medianback <- fit_or_load("model_overlap_on_medianback", glmer(
-  has_overlap_onset ~ median_back + (1 | docId),
-  data = sbc_noninit,
-  family = binomial(link = "logit")
-))
+model_overlap_on_place_medianback <- fit_or_load(
+  "model_overlap_on_place_medianback",
+  glmer(
+    has_overlap_onset ~ place + median_back + (1 | docId),
+    data = sbc_noninit,
+    family = binomial(link = "logit")
+  )
+)
+model_overlap_on_medianback <- fit_or_load(
+  "model_overlap_on_medianback",
+  glmer(
+    has_overlap_onset ~ median_back + (1 | docId),
+    data = sbc_noninit,
+    family = binomial(link = "logit")
+  )
+)
 ```
 
 
 ```{r}
-model_overlap_on_place_modeback <- fit_or_load("model_overlap_on_place_modeback", glmer(
-  has_overlap_onset ~ place + mode_back + (1 | docId),
-  data = sbc_noninit,
-  family = binomial(link = "logit")
-))
-model_overlap_on_modeback <- fit_or_load("model_overlap_on_modeback", glmer(
-  has_overlap_onset ~ mode_back + (1 | docId),
-  data = sbc_noninit,
-  family = binomial(link = "logit")
-))
+model_overlap_on_place_modeback <- fit_or_load(
+  "model_overlap_on_place_modeback",
+  glmer(
+    has_overlap_onset ~ place + mode_back + (1 | docId),
+    data = sbc_noninit,
+    family = binomial(link = "logit")
+  )
+)
+model_overlap_on_modeback <- fit_or_load(
+  "model_overlap_on_modeback",
+  glmer(
+    has_overlap_onset ~ mode_back + (1 | docId),
+    data = sbc_noninit,
+    family = binomial(link = "logit")
+  )
+)
 ```
 
 
@@ -191,7 +212,9 @@ sbc <- sbc %>%
     match_turnType = if_else(next_has_match, next_turnType, next2_turnType),
     has_bc_onset = has_overlap_onset &
       coalesce(str_detect(match_turnType, "^\\s*back"), FALSE),
-    has_turn_onset = has_overlap_onset & !has_bc_onset
+    # Only full, minimal or terminated (abandoned) turns; laughter, vocalisations etc. are neither
+    has_turn_onset = has_overlap_onset &
+      coalesce(str_detect(match_turnType, "^\\s*(full|minimal|terminated)"), FALSE)
   ) %>%
   select(
     -c(
@@ -224,16 +247,22 @@ sbc_noninit <- sbc %>%
 
 
 ```{r}
-model_overlap_on_modeback_bc <- fit_or_load("model_overlap_on_modeback_bc", glmer(
-  has_bc_onset ~ mode_back + place + (1 | docId),
-  data = sbc_noninit %>% filter(turn_has_bc_onset),
-  family = binomial(link = "logit")
-))
-model_overlap_on_modeback_turn <- fit_or_load("model_overlap_on_modeback_turn", glmer(
-  has_turn_onset ~ mode_back + place + (1 | docId),
-  data = sbc_noninit %>% filter(turn_has_turn_onset),
-  family = binomial(link = "logit")
-))
+model_overlap_on_modeback_bc <- fit_or_load(
+  "model_overlap_on_modeback_bc",
+  glmer(
+    has_bc_onset ~ mode_back + place + (1 | docId),
+    data = sbc_noninit %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_overlap_on_modeback_turn <- fit_or_load(
+  "model_overlap_on_modeback_turn",
+  glmer(
+    has_turn_onset ~ mode_back + place + (1 | docId),
+    data = sbc_noninit %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
 ```
 
 
@@ -252,23 +281,36 @@ plot_predictions(
 ```
 
 ```{r}
-model_overlap_on_modeback_bc_int <- fit_or_load("model_overlap_on_modeback_bc_int", glmer(
-  has_bc_onset ~ mode_back * place + (1 | docId),
-  data = sbc_noninit %>% filter(turn_has_bc_onset),
-  family = binomial(link = "logit")
-))
-model_overlap_on_modeback_turn_int <- fit_or_load("model_overlap_on_modeback_turn_int", glmer(
-  has_turn_onset ~ mode_back * place + (1 | docId),
-  data = sbc_noninit %>% filter(turn_has_turn_onset),
-  family = binomial(link = "logit")
-))
+model_overlap_on_modeback_bc_int <- fit_or_load(
+  "model_overlap_on_modeback_bc_int",
+  glmer(
+    has_bc_onset ~ mode_back * place + (1 | docId),
+    data = sbc_noninit %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_overlap_on_modeback_turn_int <- fit_or_load(
+  "model_overlap_on_modeback_turn_int",
+  glmer(
+    has_turn_onset ~ mode_back * place + (1 | docId),
+    data = sbc_noninit %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
 ```
 
 
 ```{r}
+place_vals <- c(1, 2, 3, 4, 5, 6, 10, 14)
+
 plot_predictions(
   model_overlap_on_modeback_bc_int,
-  condition = list("mode_back")
+  condition = list("mode_back", place = place_vals)
+)
+
+plot_predictions(
+  model_overlap_on_modeback_turn_int,
+  condition = list("mode_back", place = place_vals)
 )
 ```
 
@@ -278,6 +320,839 @@ sjPlot::tab_model(
   model_overlap_on_place_modeback,
   model_overlap_on_place,
   model_overlap_on_modeback,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+# Mode back vs actual back
+
+```{r}
+# Same rows for every model so AIC / LRTs are comparable
+sbc_back <- sbc_noninit %>%
+  filter(!is.na(back), !is.na(mode_back))
+```
+
+```{r}
+model_bc_place_modeback <- fit_or_load(
+  "model_bc_place_modeback",
+  glmer(
+    has_bc_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_back <- fit_or_load(
+  "model_bc_place_back",
+  glmer(
+    has_bc_onset ~ place + back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_back_modeback <- fit_or_load(
+  "model_bc_place_back_modeback",
+  glmer(
+    has_bc_onset ~ place + back + mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+```{r}
+model_turn_place_modeback <- fit_or_load(
+  "model_turn_place_modeback",
+  glmer(
+    has_turn_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back <- fit_or_load(
+  "model_turn_place_back",
+  glmer(
+    has_turn_onset ~ place + back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back_modeback <- fit_or_load(
+  "model_turn_place_back_modeback",
+  glmer(
+    has_turn_onset ~ place + back + mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+Mode back vs actual back (non-nested, so compare AIC):
+
+```{r}
+AIC(model_bc_place_modeback, model_bc_place_back)
+AIC(model_turn_place_modeback, model_turn_place_back)
+```
+
+Does mode back add anything over place + actual back (nested, so LRT):
+
+```{r}
+anova(model_bc_place_back, model_bc_place_back_modeback)
+anova(model_turn_place_back, model_turn_place_back_modeback)
+```
+
+```{r}
+sjPlot::tab_model(
+  model_bc_place_modeback,
+  model_bc_place_back,
+  model_bc_place_back_modeback,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+sjPlot::tab_model(
+  model_turn_place_modeback,
+  model_turn_place_back,
+  model_turn_place_back_modeback,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+## Interacting with place
+
+```{r}
+model_bc_place_modeback_int <- fit_or_load(
+  "model_bc_place_modeback_int",
+  glmer(
+    has_bc_onset ~ place * mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_back_int <- fit_or_load(
+  "model_bc_place_back_int",
+  glmer(
+    has_bc_onset ~ place * back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_back_modeback_int <- fit_or_load(
+  "model_bc_place_back_modeback_int",
+  glmer(
+    has_bc_onset ~ place * back + place * mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+```{r}
+model_turn_place_modeback_int <- fit_or_load(
+  "model_turn_place_modeback_int",
+  glmer(
+    has_turn_onset ~ place * mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back_int <- fit_or_load(
+  "model_turn_place_back_int",
+  glmer(
+    has_turn_onset ~ place * back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back_modeback_int <- fit_or_load(
+  "model_turn_place_back_modeback_int",
+  glmer(
+    has_turn_onset ~ place * back + place * mode_back + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+Mode back vs actual back, with interactions (non-nested, so compare AIC):
+
+```{r}
+AIC(model_bc_place_modeback_int, model_bc_place_back_int)
+AIC(model_turn_place_modeback_int, model_turn_place_back_int)
+```
+
+Does mode back (and its interaction with place) add anything over place * actual back (nested, so LRT):
+
+```{r}
+anova(model_bc_place_back_int, model_bc_place_back_modeback_int)
+anova(model_turn_place_back_int, model_turn_place_back_modeback_int)
+```
+
+Do the interactions help over the additive models (nested, so LRT):
+
+```{r}
+anova(model_bc_place_modeback, model_bc_place_modeback_int)
+anova(model_bc_place_back, model_bc_place_back_int)
+anova(model_bc_place_back_modeback, model_bc_place_back_modeback_int)
+anova(model_turn_place_modeback, model_turn_place_modeback_int)
+anova(model_turn_place_back, model_turn_place_back_int)
+anova(model_turn_place_back_modeback, model_turn_place_back_modeback_int)
+```
+
+```{r}
+sjPlot::tab_model(
+  model_bc_place_modeback_int,
+  model_bc_place_back_int,
+  model_bc_place_back_modeback_int,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+```{r}
+sjPlot::tab_model(
+  model_turn_place_modeback_int,
+  model_turn_place_back_int,
+  model_turn_place_back_modeback_int,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+```{r}
+place_vals <- c(1, 2, 3, 4, 5, 6, 10, 14)
+
+plot_predictions(
+  model_bc_place_back_modeback_int,
+  condition = list("mode_back", place = place_vals)
+)
+
+plot_predictions(
+  model_turn_place_back_modeback_int,
+  condition = list("mode_back", place = place_vals)
+)
+```
+
+```{r}
+# Effect of mode_back (per extra word) on P(onset), as a function of place
+plot_slopes(
+  model_bc_place_back_modeback_int,
+  variables = "mode_back",
+  condition = "place"
+)
+
+plot_slopes(
+  model_turn_place_back_modeback_int,
+  variables = "mode_back",
+  condition = "place"
+)
+```
+
+# Back prediction error
+
+```{r}
+# Positive = more words left in the unit than the mode predicts
+sbc_back <- sbc_back %>%
+  mutate(back_err = back - mode_back)
+```
+
+```{r}
+model_bc_place_backerr <- fit_or_load(
+  "model_bc_place_backerr",
+  glmer(
+    has_bc_onset ~ place + back_err + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+# Same fit as place + back + mode_back, reparameterised
+model_bc_place_modeback_backerr <- fit_or_load(
+  "model_bc_place_modeback_backerr",
+  glmer(
+    has_bc_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+```{r}
+model_turn_place_backerr <- fit_or_load(
+  "model_turn_place_backerr",
+  glmer(
+    has_turn_onset ~ place + back_err + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+# Same fit as place + back + mode_back, reparameterised
+model_turn_place_modeback_backerr <- fit_or_load(
+  "model_turn_place_modeback_backerr",
+  glmer(
+    has_turn_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+Prediction error vs mode back vs actual back (non-nested, so compare AIC):
+
+```{r}
+AIC(model_bc_place_backerr, model_bc_place_modeback, model_bc_place_back)
+AIC(model_turn_place_backerr, model_turn_place_modeback, model_turn_place_back)
+```
+
+Does prediction error add anything over place + mode back (nested, so LRT):
+
+```{r}
+anova(model_bc_place_modeback, model_bc_place_modeback_backerr)
+anova(model_turn_place_modeback, model_turn_place_modeback_backerr)
+```
+
+```{r}
+sjPlot::tab_model(
+  model_bc_place_backerr,
+  model_bc_place_modeback,
+  model_bc_place_modeback_backerr,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+```{r}
+sjPlot::tab_model(
+  model_turn_place_backerr,
+  model_turn_place_modeback,
+  model_turn_place_modeback_backerr,
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+# Non-terminal IUs only
+
+Drop IUs ending in terminal intonation (period or question mark), to see if the effects are about IU boundaries rather than utterance boundaries.
+
+```{r}
+# endNote sits on the IU's punctuation row (place is NA there), so flag at the unit level
+unit_terminal <- sbc %>%
+  group_by(docId, unitId) %>%
+  summarise(
+    unit_is_terminal = any(endNote %in% c("final", "appeal")),
+    .groups = "drop"
+  )
+
+sbc_back_nonterm <- sbc_back %>%
+  left_join(unit_terminal, by = c("docId", "unitId")) %>%
+  filter(!unit_is_terminal)
+```
+
+```{r}
+model_bc_place_modeback_nonterm <- fit_or_load(
+  "model_bc_place_modeback_nonterm",
+  glmer(
+    has_bc_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_back_nonterm <- fit_or_load(
+  "model_bc_place_back_nonterm",
+  glmer(
+    has_bc_onset ~ place + back + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_backerr_nonterm <- fit_or_load(
+  "model_bc_place_backerr_nonterm",
+  glmer(
+    has_bc_onset ~ place + back_err + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_modeback_backerr_nonterm <- fit_or_load(
+  "model_bc_place_modeback_backerr_nonterm",
+  glmer(
+    has_bc_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+```{r}
+model_turn_place_modeback_nonterm <- fit_or_load(
+  "model_turn_place_modeback_nonterm",
+  glmer(
+    has_turn_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back_nonterm <- fit_or_load(
+  "model_turn_place_back_nonterm",
+  glmer(
+    has_turn_onset ~ place + back + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_backerr_nonterm <- fit_or_load(
+  "model_turn_place_backerr_nonterm",
+  glmer(
+    has_turn_onset ~ place + back_err + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_modeback_backerr_nonterm <- fit_or_load(
+  "model_turn_place_modeback_backerr_nonterm",
+  glmer(
+    has_turn_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back_nonterm %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+Prediction error vs mode back vs actual back (non-nested, so compare AIC):
+
+```{r}
+AIC(
+  model_bc_place_backerr_nonterm,
+  model_bc_place_modeback_nonterm,
+  model_bc_place_back_nonterm
+)
+AIC(
+  model_turn_place_backerr_nonterm,
+  model_turn_place_modeback_nonterm,
+  model_turn_place_back_nonterm
+)
+```
+
+Does prediction error add anything over place + mode back (nested, so LRT):
+
+```{r}
+anova(model_bc_place_modeback_nonterm, model_bc_place_modeback_backerr_nonterm)
+anova(
+  model_turn_place_modeback_nonterm,
+  model_turn_place_modeback_backerr_nonterm
+)
+```
+
+Coefficients vs the all-IU models (different data, so compare estimates only, not AIC):
+
+```{r}
+sjPlot::tab_model(
+  model_bc_place_modeback_backerr,
+  model_bc_place_modeback_backerr_nonterm,
+  dv.labels = c("All IUs", "Non-terminal IUs"),
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+```{r}
+sjPlot::tab_model(
+  model_turn_place_modeback_backerr,
+  model_turn_place_modeback_backerr_nonterm,
+  dv.labels = c("All IUs", "Non-terminal IUs"),
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+# Syntactically incomplete IUs only
+
+Drop IUs that end at a possible sentence end, using the spaCy dependency parses. An IU counts as incomplete if, at its last word, something is still due:
+
+- a word so far is waiting for its head (e.g. "the", a subject before its verb),
+- a later word fills a core argument slot of a word so far (e.g. "to get / something"), or
+- the IU ends in a dangling function word (e.g. "and", "or", a preposition with no object).
+
+```{r}
+# Later dependents that count as a "due" argument of an earlier head
+core_deps <- c(
+  "dobj",
+  "pobj",
+  "pcomp",
+  "attr",
+  "acomp",
+  "oprd",
+  "dative",
+  "xcomp",
+  "ccomp",
+  "nsubj",
+  "nsubjpass",
+  "csubj"
+)
+# IU-final dependency labels that leave the IU hanging
+dangling_deps <- c(
+  "cc",
+  "preconj",
+  "prep",
+  "det",
+  "predet",
+  "poss",
+  "mark",
+  "aux",
+  "auxpass",
+  "case"
+)
+# Subject labels, for subjects still waiting for their verb
+subj_deps <- c("nsubj", "nsubjpass", "csubj", "csubjpass", "expl")
+
+parses <- list.files(
+  here("data", "new_spacy_parses"),
+  pattern = "\\.csv$",
+  full.names = TRUE
+) %>%
+  lapply(\(f) {
+    read_csv(
+      f,
+      col_select = c(docId, unitId, text, spacy_id, head, dep),
+      show_col_types = FALSE
+    )
+  }) %>%
+  bind_rows()
+
+# spacy_id and head are token indices running through the whole doc
+parse_tokens <- parses %>%
+  filter(!is.na(spacy_id), dep != "punct") %>%
+  arrange(docId, spacy_id) %>%
+  group_by(docId) %>%
+  mutate(
+    head = as.numeric(head),
+    max_head_so_far = cummax(head),
+    max_subj_head_so_far = cummax(if_else(dep %in% subj_deps, head, -Inf)),
+    core_head = if_else(dep %in% core_deps, head, Inf),
+    # Smallest head among core dependents strictly after this token
+    min_core_head_after = lead(rev(cummin(rev(core_head))), default = Inf)
+  ) %>%
+  ungroup()
+
+iu_syntax <- parse_tokens %>%
+  group_by(docId, unitId) %>%
+  mutate(iu_text = paste(text, collapse = " ")) %>%
+  slice_max(spacy_id, n = 1) %>%
+  ungroup() %>%
+  transmute(
+    docId,
+    unitId,
+    iu_text,
+    head_due = max_head_so_far > spacy_id,
+    # Subset of head_due: a subject so far whose verb comes after the IU
+    verb_due = max_subj_head_so_far > spacy_id,
+    arg_due = min_core_head_after <= spacy_id,
+    dangling = dep %in% dangling_deps,
+    iu_possible_end = !(head_due | arg_due | dangling)
+  )
+```
+
+Sanity check: how the flag lines up with intonation, and some examples.
+
+```{r}
+iu_syntax %>%
+  left_join(unit_terminal, by = c("docId", "unitId")) %>%
+  count(unit_is_terminal, iu_possible_end)
+
+iu_syntax %>%
+  slice_sample(n = 40) %>%
+  select(iu_text, head_due, verb_due, arg_due, dangling, iu_possible_end)
+```
+
+```{r}
+sbc_back_incompl <- sbc_back %>%
+  inner_join(
+    iu_syntax %>% select(docId, unitId, iu_possible_end),
+    by = c("docId", "unitId")
+  ) %>%
+  filter(!iu_possible_end)
+```
+
+```{r}
+model_bc_place_modeback_incompl <- fit_or_load(
+  "model_bc_place_modeback_incompl",
+  glmer(
+    has_bc_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_back_incompl <- fit_or_load(
+  "model_bc_place_back_incompl",
+  glmer(
+    has_bc_onset ~ place + back + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_backerr_incompl <- fit_or_load(
+  "model_bc_place_backerr_incompl",
+  glmer(
+    has_bc_onset ~ place + back_err + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_modeback_backerr_incompl <- fit_or_load(
+  "model_bc_place_modeback_backerr_incompl",
+  glmer(
+    has_bc_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+```{r}
+model_turn_place_modeback_incompl <- fit_or_load(
+  "model_turn_place_modeback_incompl",
+  glmer(
+    has_turn_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back_incompl <- fit_or_load(
+  "model_turn_place_back_incompl",
+  glmer(
+    has_turn_onset ~ place + back + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_backerr_incompl <- fit_or_load(
+  "model_turn_place_backerr_incompl",
+  glmer(
+    has_turn_onset ~ place + back_err + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_modeback_backerr_incompl <- fit_or_load(
+  "model_turn_place_modeback_backerr_incompl",
+  glmer(
+    has_turn_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back_incompl %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+Prediction error vs mode back vs actual back (non-nested, so compare AIC):
+
+```{r}
+AIC(
+  model_bc_place_backerr_incompl,
+  model_bc_place_modeback_incompl,
+  model_bc_place_back_incompl
+)
+AIC(
+  model_turn_place_backerr_incompl,
+  model_turn_place_modeback_incompl,
+  model_turn_place_back_incompl
+)
+```
+
+Does prediction error add anything over place + mode back (nested, so LRT):
+
+```{r}
+anova(model_bc_place_modeback_incompl, model_bc_place_modeback_backerr_incompl)
+anova(
+  model_turn_place_modeback_incompl,
+  model_turn_place_modeback_backerr_incompl
+)
+```
+
+Coefficients vs the all-IU and non-terminal models (different data, so compare estimates only, not AIC):
+
+```{r}
+sjPlot::tab_model(
+  model_bc_place_modeback_backerr,
+  model_bc_place_modeback_backerr_nonterm,
+  model_bc_place_modeback_backerr_incompl,
+  dv.labels = c("All IUs", "Non-terminal IUs", "Syntactically incomplete IUs"),
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+```{r}
+sjPlot::tab_model(
+  model_turn_place_modeback_backerr,
+  model_turn_place_modeback_backerr_nonterm,
+  model_turn_place_modeback_backerr_incompl,
+  dv.labels = c("All IUs", "Non-terminal IUs", "Syntactically incomplete IUs"),
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+
+# Excluding only IUs that are both syntactically and prosodically complete
+
+Drop IUs that end at a possible sentence end *and* in terminal intonation (period or question mark); keep everything else.
+
+```{r}
+sbc_back_notboth <- sbc_back %>%
+  left_join(unit_terminal, by = c("docId", "unitId")) %>%
+  left_join(
+    iu_syntax %>% select(docId, unitId, iu_possible_end),
+    by = c("docId", "unitId")
+  ) %>%
+  # Unparsed IUs (NA) are kept
+  filter(!(unit_is_terminal %in% TRUE & iu_possible_end %in% TRUE))
+
+sbc_back_notboth %>%
+  summarise(
+    n_words = n(),
+    n_ius = n_distinct(docId, unitId),
+    n_bc_onsets = sum(has_bc_onset & turn_has_bc_onset, na.rm = TRUE),
+    n_turn_onsets = sum(has_turn_onset & turn_has_turn_onset, na.rm = TRUE)
+  )
+```
+
+```{r}
+model_bc_place_modeback_notboth <- fit_or_load(
+  "model_bc_place_modeback_notboth",
+  glmer(
+    has_bc_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_back_notboth <- fit_or_load(
+  "model_bc_place_back_notboth",
+  glmer(
+    has_bc_onset ~ place + back + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_backerr_notboth <- fit_or_load(
+  "model_bc_place_backerr_notboth",
+  glmer(
+    has_bc_onset ~ place + back_err + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_bc_place_modeback_backerr_notboth <- fit_or_load(
+  "model_bc_place_modeback_backerr_notboth",
+  glmer(
+    has_bc_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_bc_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+```{r}
+model_turn_place_modeback_notboth <- fit_or_load(
+  "model_turn_place_modeback_notboth",
+  glmer(
+    has_turn_onset ~ place + mode_back + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_back_notboth <- fit_or_load(
+  "model_turn_place_back_notboth",
+  glmer(
+    has_turn_onset ~ place + back + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_backerr_notboth <- fit_or_load(
+  "model_turn_place_backerr_notboth",
+  glmer(
+    has_turn_onset ~ place + back_err + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+model_turn_place_modeback_backerr_notboth <- fit_or_load(
+  "model_turn_place_modeback_backerr_notboth",
+  glmer(
+    has_turn_onset ~ place + mode_back + back_err + (1 | docId),
+    data = sbc_back_notboth %>% filter(turn_has_turn_onset),
+    family = binomial(link = "logit")
+  )
+)
+```
+
+Prediction error vs mode back vs actual back (non-nested, so compare AIC):
+
+```{r}
+AIC(
+  model_bc_place_backerr_notboth,
+  model_bc_place_modeback_notboth,
+  model_bc_place_back_notboth
+)
+AIC(
+  model_turn_place_backerr_notboth,
+  model_turn_place_modeback_notboth,
+  model_turn_place_back_notboth
+)
+```
+
+Does prediction error add anything over place + mode back (nested, so LRT):
+
+```{r}
+anova(model_bc_place_modeback_notboth, model_bc_place_modeback_backerr_notboth)
+anova(
+  model_turn_place_modeback_notboth,
+  model_turn_place_modeback_backerr_notboth
+)
+```
+
+Coefficients across subsets (different data, so compare estimates only, not AIC):
+
+```{r}
+sjPlot::tab_model(
+  model_bc_place_modeback_backerr,
+  model_bc_place_modeback_backerr_notboth,
+  model_bc_place_modeback_backerr_nonterm,
+  model_bc_place_modeback_backerr_incompl,
+  model_bc_place_modeback_backerr_subj,
+  dv.labels = c(
+    "All IUs",
+    "Not both complete",
+    "Non-terminal",
+    "Incomplete",
+    "Verb due"
+  ),
+  show.aic = TRUE,
+  show.loglik = TRUE,
+  show.dev = TRUE
+)
+```
+```{r}
+sjPlot::tab_model(
+  model_turn_place_modeback_backerr,
+  model_turn_place_modeback_backerr_notboth,
+  model_turn_place_modeback_backerr_nonterm,
+  model_turn_place_modeback_backerr_incompl,
+  model_turn_place_modeback_backerr_subj,
+  dv.labels = c(
+    "All IUs",
+    "Not both complete",
+    "Non-terminal",
+    "Incomplete",
+    "Verb due"
+  ),
   show.aic = TRUE,
   show.loglik = TRUE,
   show.dev = TRUE

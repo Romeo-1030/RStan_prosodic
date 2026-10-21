@@ -19,3 +19,5 @@ output/attach.csv
 output/clause.csv
 output/entropies_v1.csv
 nb/turn_bc/tut.md
+data/
+draft/

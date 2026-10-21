@@ -1,158 +1,583 @@
+---
+title: "Turn / BC onset multiverse"
+format:
+  html:
+    toc: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+Multiverse over the back-position choices in `turn_bc_explore.qmd`, excluding the syntax-based subsets:
+
+| Choice | Options |
+|---|---|
+| Outcome | BC onset, turn onset |
+| Data subset | all IUs, non-terminal IUs |
+| How place enters | additive, interaction |
+| Back predictor | actual; expected; actual + expected; prediction error (actual − expected) |
+| Expected-back statistic | mean, median, mode (not used by actual-only) |
+
+That is 2 × 2 × 2 × (1 + 3 + 3 + 3) = 80 specs, plus a place-only baseline per outcome × subset cell.
+Every spec is a logistic GLMM with a random intercept per document, fit on the full data and with 5-fold cross-validation grouped by document.
+
+To run as a batch job, see `run_multiverse.sbatch` next to this file.
+Each spec is cached in `output/turn_bc_multiverse/`, so a rerun after a crash or timeout only fits what is missing.
 
 ```{r}
 library(here)
 library(dplyr)
 library(readr)
-library(ggplot2)
 library(stringr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
 library(lme4)
-library(sjPlot)
-library(marginaleffects)
+library(parallel)
 ```
 
-
 ```{r}
-sbc <- readRDS(here("data", 'sbc_post_turnv2.rds'))
-back_given_place_summ <- read_csv(here("data", 'conditional_back_summary.csv'))
+# Each spec's fits are cached in output/turn_bc_multiverse/<spec_id>.rds;
+# set the env var TURN_BC_REFIT=true (or refit_models <- TRUE) to refit everything
+out_dir <- here("output", "turn_bc_multiverse")
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+refit_models <- tolower(Sys.getenv("TURN_BC_REFIT", "false")) == "true"
+
+# Use the CPUs SLURM allocated; forking isn't available on Windows
+n_cores <- if (.Platform$OS.type == "windows") {
+  1L
+} else {
+  as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", max(1L, detectCores() - 1L)))
+}
+n_folds <- 5
+cv_seed <- 2200
+glmer_ctrl <- glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
 ```
 
+# Data
 
 ```{r}
+sbc <- readRDS(here("data", "turns_updated.rds"))
+back_given_place_summ <- read_csv(
+  here("data", "conditional_back_summary.csv"),
+  show_col_types = FALSE
+)
 sbc <- sbc %>% left_join(back_given_place_summ, by = c(text = "word", "place"))
 ```
 
+BC / turn onsets, as in `turn_bc_explore.qmd`:
+
 ```{r}
-sbc_noninit <- sbc %>%
-  mutate(has_overlap_onset = str_detect(transcript, "\\[")) %>%
+# Opening-bracket label of each word, e.g. "[" or "[2" (NA if none)
+sbc <- sbc %>%
+  mutate(overlap_label = str_extract(transcript, "\\[\\d*"))
+
+# Next two units (within the same doc), their turnTypes, and whether the next has any overlap
+unit_info <- sbc %>%
+  group_by(docId, unitId) %>%
+  summarise(
+    unit_turnType = first(turnType),
+    unit_has_overlap = any(isOverlap %in% TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(docId, unitId) %>%
+  group_by(docId) %>%
+  mutate(
+    next_unitId = lead(unitId),
+    next_turnType = lead(unit_turnType),
+    next_has_overlap = lead(unit_has_overlap),
+    next2_unitId = lead(unitId, 2),
+    next2_turnType = lead(unit_turnType, 2)
+  ) %>%
+  ungroup() %>%
+  select(
+    docId,
+    unitId,
+    next_unitId,
+    next_turnType,
+    next_has_overlap,
+    next2_unitId,
+    next2_turnType
+  )
+
+# Opening brackets in each unit, keyed so they can be matched from an earlier unit
+open_brackets <- sbc %>%
+  filter(!is.na(overlap_label)) %>%
+  distinct(docId, unitId, overlap_label)
+
+sbc <- sbc %>%
+  left_join(unit_info, by = c("docId", "unitId")) %>%
+  left_join(
+    open_brackets %>% mutate(next_has_match = TRUE),
+    by = c("docId", next_unitId = "unitId", "overlap_label")
+  ) %>%
+  left_join(
+    open_brackets %>% mutate(next2_has_match = TRUE),
+    by = c("docId", next2_unitId = "unitId", "overlap_label")
+  ) %>%
+  mutate(
+    next_has_match = coalesce(next_has_match, FALSE),
+    # Only look two units ahead if the next unit has some (other) overlapped portion
+    next2_has_match = !next_has_match &
+      coalesce(next_has_overlap, FALSE) &
+      coalesce(next2_has_match, FALSE),
+    has_overlap_onset = next_has_match | next2_has_match,
+    match_turnType = if_else(next_has_match, next_turnType, next2_turnType),
+    has_bc_onset = has_overlap_onset &
+      coalesce(str_detect(match_turnType, "^\\s*back"), FALSE),
+    has_turn_onset = has_overlap_onset & !has_bc_onset
+  ) %>%
+  select(
+    -c(
+      next_unitId,
+      next_turnType,
+      next_has_overlap,
+      next2_unitId,
+      next2_turnType,
+      next_has_match,
+      next2_has_match,
+      match_turnType
+    )
+  )
+
+# Whether any word in the turn has a BC / turn onset (NA where turnSeq is missing)
+sbc <- sbc %>%
+  group_by(docId, turnSeq) %>%
+  mutate(
+    turn_has_bc_onset = if_else(is.na(turnSeq), NA, any(has_bc_onset)),
+    turn_has_turn_onset = if_else(is.na(turnSeq), NA, any(has_turn_onset))
+  ) %>%
+  ungroup()
+```
+
+```{r}
+# endNote sits on the IU's punctuation row (place is NA there), so flag at the unit level;
+# terminal = period ("final") or question mark ("appeal")
+unit_terminal <- sbc %>%
+  group_by(docId, unitId) %>%
+  summarise(
+    unit_is_terminal = any(endNote %in% c("final", "appeal")),
+    .groups = "drop"
+  )
+
+back_stats <- c("mean", "median", "mode")
+
+sbc_mv <- sbc %>%
+  left_join(unit_terminal, by = c("docId", "unitId")) %>%
   filter(place != 1) %>%
-  filter(!is.na(mean_back))
-```
-
-```{r}
-ggplot(sbc_noninit, aes(y = as.numeric(has_overlap_onset), x = mean_back)) +
-  stat_
-```
-
-
-# Model set
-
-All models are logistic GLMMs with a random intercept per document; they differ only in the fixed effects.
-
-```{r}
-library(tidymodels)
-library(multilevelmod)
-```
-
-```{r}
-# parsnip classification needs a factor outcome; glmer models P(second level) = P(TRUE)
-sbc_tm <- sbc_noninit %>%
-  mutate(has_overlap_onset = factor(has_overlap_onset, levels = c(FALSE, TRUE)))
-```
-
-```{r}
-back_vars <- c(meanback = "mean_back", medianback = "median_back", modeback = "mode_back")
-
-fixed_effects <- c(
-  list(place = "place"),
-  as.list(back_vars),
-  setNames(lapply(back_vars, \(v) c("place", v)), paste0("place_", names(back_vars)))
-)
-
-glmer_spec <- logistic_reg() %>% set_engine("glmer")
-
-# Formula preprocessors can't hold (1 | docId), so pass raw variables through
-# and give the mixed-model formula to the model instead.
-wf_set <- workflow_set(
-  preproc = lapply(fixed_effects, \(fe) {
-    workflow_variables(outcomes = has_overlap_onset, predictors = all_of(c(fe, "docId")))
-  }),
-  models = list(glmer = glmer_spec)
-)
-
-for (nm in names(fixed_effects)) {
-  wf_set <- update_workflow_model(
-    wf_set,
-    id = paste0(nm, "_glmer"),
-    spec = glmer_spec,
-    formula = reformulate(c(fixed_effects[[nm]], "(1 | docId)"), response = "has_overlap_onset")
+  # Same rows for every spec within a cell, so AIC / LRTs are comparable
+  filter(
+    !is.na(back),
+    !is.na(mean_back),
+    !is.na(median_back),
+    !is.na(mode_back)
+  ) %>%
+  mutate(
+    err_mean = back - mean_back,
+    err_median = back - median_back,
+    err_mode = back - mode_back
   )
+```
+
+One data set per outcome × subset cell. Folds are assigned by document and shared by every spec in a cell, so CV scores are paired.
+
+```{r}
+cells <- expand_grid(outcome = c("bc", "turn"), subset = c("all", "nonterm")) %>%
+  mutate(cell = paste(outcome, subset, sep = "__"))
+
+make_cell_data <- function(outcome, subset) {
+  d <- sbc_mv %>%
+    filter(.data[[paste0("turn_has_", outcome, "_onset")]] %in% TRUE)
+  if (subset == "nonterm") {
+    d <- d %>% filter(!unit_is_terminal)
+  }
+  d <- d %>%
+    transmute(
+      docId,
+      place,
+      back,
+      mean_back,
+      median_back,
+      mode_back,
+      err_mean,
+      err_median,
+      err_mode,
+      onset = as.integer(.data[[paste0("has_", outcome, "_onset")]])
+    )
+  docs <- sample(unique(d$docId))
+  fold_of_doc <- setNames(rep_len(seq_len(n_folds), length(docs)), docs)
+  d %>% mutate(fold = unname(fold_of_doc[docId]))
 }
 
-wf_set
+set.seed(cv_seed)
+cell_data <- map2(cells$outcome, cells$subset, make_cell_data) %>%
+  set_names(cells$cell)
+
+# Keep forked workers small
+rm(sbc, sbc_mv, unit_info, open_brackets, unit_terminal)
+invisible(gc())
+
+cells %>%
+  mutate(
+    n_words = map_int(cell_data, nrow),
+    n_docs = map_int(cell_data, \(d) n_distinct(d$docId)),
+    n_onsets = map_int(cell_data, \(d) sum(d$onset))
+  )
 ```
 
-## Fit on the full data
+# Specs
 
 ```{r}
-glmer_fits <- wf_set$wflow_id %>%
-  set_names() %>%
-  map(\(id) extract_workflow(wf_set, id) %>% fit(data = sbc_tm))
+back_specs <- c(
+  list(none = character(0), actual = "back"),
+  set_names(
+    map(back_stats, \(s) paste0(s, "_back")),
+    paste0("expected_", back_stats)
+  ),
+  set_names(
+    map(back_stats, \(s) c("back", paste0(s, "_back"))),
+    paste0("both_", back_stats)
+  ),
+  set_names(
+    map(back_stats, \(s) paste0("err_", s)),
+    paste0("error_", back_stats)
+  )
+)
 
-glmer_engines <- map(glmer_fits, extract_fit_engine)
-```
-
-```{r}
-tibble(
-  wflow_id = names(glmer_engines),
-  AIC = map_dbl(glmer_engines, AIC),
-  BIC = map_dbl(glmer_engines, BIC),
-  logLik = map_dbl(glmer_engines, \(m) as.numeric(logLik(m))),
-  deviance = map_dbl(glmer_engines, deviance)
+specs <- expand_grid(
+  cell = cells$cell,
+  place_form = c("additive", "interaction"),
+  back_spec = names(back_specs)
 ) %>%
-  arrange(AIC)
+  # The place-only baseline is the same either way, so keep one per cell
+  filter(!(back_spec == "none" & place_form == "interaction")) %>%
+  left_join(cells, by = "cell") %>%
+  mutate(
+    predictor = str_remove(back_spec, "_.*"),
+    stat = str_extract(back_spec, "(?<=_)[a-z]+$"),
+    spec_id = paste(cell, place_form, back_spec, sep = "__"),
+    formula = map2_chr(back_spec, place_form, \(b, pf) {
+      vars <- back_specs[[b]]
+      fixed <- if (length(vars) == 0) {
+        "place"
+      } else if (pf == "additive") {
+        c("place", vars)
+      } else {
+        paste("place *", vars)
+      }
+      paste("onset ~", paste(c(fixed, "(1 | docId)"), collapse = " + "))
+    })
+  )
+
+stopifnot(sum(specs$predictor != "none") == 80)
+specs %>% count(outcome, subset, place_form)
 ```
 
-```{r}
-sjPlot::tab_model(glmer_engines$place_meanback_glmer)
-```
+# Fitting
 
 ```{r}
-tab_back_comparison <- function(b) {
-  sjPlot::tab_model(
-    glmer_engines[[paste0("place_", b, "_glmer")]],
-    glmer_engines$place_glmer,
-    glmer_engines[[paste0(b, "_glmer")]],
-    show.aic = TRUE,
-    show.loglik = TRUE,
-    show.dev = TRUE
+auc <- function(y, p) {
+  r <- rank(p)
+  n1 <- sum(y == 1)
+  n0 <- sum(y == 0)
+  (sum(r[y == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0)
+}
+
+log_loss <- function(y, p) {
+  p <- pmin(pmax(p, 1e-15), 1 - 1e-15)
+  -mean(y * log(p) + (1 - y) * log(1 - p))
+}
+
+fit_glmer <- function(formula, d) {
+  glmer(
+    as.formula(formula),
+    data = d,
+    family = binomial(link = "logit"),
+    control = glmer_ctrl
   )
 }
-tab_back_comparison("meanback")
-tab_back_comparison("medianback")
-tab_back_comparison("modeback")
+
+# Fits one spec on the full data and on each CV fold, and caches a summary
+# (not the model object, which carries a copy of the data)
+fit_spec <- function(spec_id, formula, cell) {
+  path <- file.path(out_dir, paste0(spec_id, ".rds"))
+  if (!refit_models && file.exists(path) && isTRUE(readRDS(path)$ok)) {
+    return(invisible(path))
+  }
+  d <- cell_data[[cell]]
+  res <- tryCatch(
+    {
+      m <- fit_glmer(formula, d)
+      # Out-of-sample: population-level predictions for held-out documents
+      cv_pred <- map(seq_len(n_folds), \(k) {
+        m_k <- fit_glmer(formula, d[d$fold != k, ])
+        test <- d[d$fold == k, ]
+        tibble(
+          fold = k,
+          onset = test$onset,
+          p = predict(m_k, newdata = test, re.form = NA, type = "response")
+        )
+      }) %>%
+        bind_rows()
+      list(
+        ok = TRUE,
+        nobs = nobs(m),
+        npar = attr(logLik(m), "df"),
+        logLik = as.numeric(logLik(m)),
+        AIC = AIC(m),
+        BIC = BIC(m),
+        singular = isSingular(m),
+        conv_msgs = paste(m@optinfo$conv$lme4$messages, collapse = "; "),
+        coefs = as_tibble(coef(summary(m)), rownames = "term"),
+        cv_pred = cv_pred
+      )
+    },
+    error = \(e) list(ok = FALSE, error = conditionMessage(e))
+  )
+  saveRDS(res, path)
+  invisible(path)
+}
 ```
 
-## Out-of-sample comparison
+```{r}
+fit_start <- Sys.time()
+fit_log <- mclapply(
+  seq_len(nrow(specs)),
+  \(i) fit_spec(specs$spec_id[i], specs$formula[i], specs$cell[i]),
+  mc.cores = n_cores,
+  mc.preschedule = FALSE
+)
+Sys.time() - fit_start
+```
 
-Folds are grouped by document, so predictions are for unseen conversations (population-level, no random effects).
+# Results
 
 ```{r}
-set.seed(2200)
-doc_folds <- group_vfold_cv(sbc_tm, group = docId, v = 5)
+fits <- map(specs$spec_id, \(id) readRDS(file.path(out_dir, paste0(id, ".rds")))) %>%
+  set_names(specs$spec_id)
 
-wf_res <- wf_set %>%
-  workflow_map(
-    "fit_resamples",
-    resamples = doc_folds,
-    metrics = metric_set(mn_log_loss, roc_auc, brier_class),
-    seed = 2200,
-    verbose = TRUE
+cv_metrics <- function(fit) {
+  if (!isTRUE(fit$ok)) {
+    return(tibble(
+      cv_log_loss = NA_real_,
+      cv_log_loss_se = NA_real_,
+      cv_brier = NA_real_,
+      cv_auc = NA_real_
+    ))
+  }
+  pred <- fit$cv_pred
+  per_fold <- pred %>%
+    group_by(fold) %>%
+    summarise(ll = log_loss(onset, p))
+  tibble(
+    cv_log_loss = log_loss(pred$onset, pred$p),
+    cv_log_loss_se = sd(per_fold$ll) / sqrt(nrow(per_fold)),
+    cv_brier = mean((pred$p - pred$onset)^2),
+    cv_auc = auc(pred$onset, pred$p)
+  )
+}
+
+results <- specs %>%
+  mutate(
+    ok = map_lgl(fits, \(f) isTRUE(f$ok)),
+    error = map_chr(fits, "error", .default = NA_character_),
+    nobs = map_dbl(fits, "nobs", .default = NA),
+    npar = map_dbl(fits, "npar", .default = NA),
+    logLik = map_dbl(fits, "logLik", .default = NA),
+    AIC = map_dbl(fits, "AIC", .default = NA),
+    BIC = map_dbl(fits, "BIC", .default = NA),
+    singular = map_lgl(fits, "singular", .default = NA),
+    conv_msgs = map_chr(fits, "conv_msgs", .default = NA_character_)
+  ) %>%
+  bind_cols(map(fits, cv_metrics) %>% bind_rows()) %>%
+  group_by(cell) %>%
+  mutate(
+    dAIC_vs_place = AIC - AIC[back_spec == "none"],
+    dlogloss_vs_place = cv_log_loss - cv_log_loss[back_spec == "none"]
+  ) %>%
+  ungroup()
+
+write_csv(
+  results %>% select(-formula),
+  here("output", "turn_bc_multiverse_results.csv")
+)
+```
+
+Failed fits, and fits with singularity or convergence warnings:
+
+```{r}
+results %>%
+  filter(!ok | singular | conv_msgs != "") %>%
+  select(spec_id, ok, error, singular, conv_msgs)
+```
+
+```{r}
+results %>%
+  arrange(cell, AIC) %>%
+  select(
+    outcome,
+    subset,
+    place_form,
+    back_spec,
+    npar,
+    AIC,
+    dAIC_vs_place,
+    cv_log_loss,
+    cv_auc
   )
 ```
 
+## Specification curves
+
 ```{r}
-rank_results(wf_res, rank_metric = "mn_log_loss") %>%
-  select(wflow_id, .metric, mean, std_err, rank)
+#| fig-width: 10
+#| fig-height: 7
+spec_order <- names(back_specs)
+
+results %>%
+  filter(predictor != "none") %>%
+  mutate(back_spec = factor(back_spec, levels = spec_order)) %>%
+  ggplot(aes(x = back_spec, y = dAIC_vs_place, colour = place_form)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(size = 2) +
+  facet_grid(outcome ~ subset, scales = "free_y") +
+  labs(x = NULL, y = "AIC − AIC(place only)", colour = "Place") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
 ```{r}
-autoplot(wf_res, metric = c("mn_log_loss", "roc_auc", "brier_class")) +
-  geom_text(aes(y = mean, label = wflow_id), angle = 90, nudge_x = 0.15, size = 3)
+#| fig-width: 10
+#| fig-height: 7
+results %>%
+  filter(predictor != "none") %>%
+  mutate(back_spec = factor(back_spec, levels = spec_order)) %>%
+  ggplot(aes(x = back_spec, y = 1000 * dlogloss_vs_place, colour = place_form)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(size = 2) +
+  facet_grid(outcome ~ subset, scales = "free_y") +
+  labs(
+    x = NULL,
+    y = "CV log loss − place only (× 1000)",
+    colour = "Place"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-# Divide into BC or not
+## Expected vs actual back
 
+Positive = actual back fits better than expected back (non-nested, so compare AIC and CV log loss).
 
 ```{r}
+actual_fit <- results %>%
+  filter(predictor == "actual") %>%
+  select(cell, place_form, AIC_actual = AIC, ll_cv_actual = cv_log_loss)
 
+results %>%
+  filter(predictor == "expected") %>%
+  inner_join(actual_fit, by = c("cell", "place_form")) %>%
+  transmute(
+    outcome,
+    subset,
+    place_form,
+    stat,
+    dAIC = AIC - AIC_actual,
+    dlogloss_x1000 = 1000 * (cv_log_loss - ll_cv_actual)
+  ) %>%
+  arrange(outcome, subset, place_form, stat)
+```
+
+## Nested comparisons
+
+```{r}
+lrt <- function(full, reduced, by) {
+  full %>%
+    select(
+      all_of(by),
+      outcome,
+      subset,
+      any_of("stat"),
+      ll_full = logLik,
+      npar_full = npar
+    ) %>%
+    inner_join(
+      reduced %>% select(all_of(by), ll_red = logLik, npar_red = npar),
+      by = by
+    ) %>%
+    mutate(
+      chisq = 2 * (ll_full - ll_red),
+      df = npar_full - npar_red,
+      p = pchisq(chisq, df, lower.tail = FALSE)
+    ) %>%
+    select(-c(ll_full, ll_red, npar_full, npar_red))
+}
+```
+
+Does expected back add anything over actual back:
+
+```{r}
+lrt(
+  results %>% filter(predictor == "both"),
+  results %>% filter(predictor == "actual"),
+  by = c("cell", "place_form")
+) %>%
+  arrange(cell, place_form, stat)
+```
+
+Does actual back (equivalently, prediction error) add anything over expected back:
+
+```{r}
+lrt(
+  results %>% filter(predictor == "both"),
+  results %>% filter(predictor == "expected"),
+  by = c("cell", "place_form", "stat")
+) %>%
+  arrange(cell, place_form, stat)
+```
+
+Do the interactions with place help:
+
+```{r}
+lrt(
+  results %>% filter(place_form == "interaction"),
+  results %>% filter(place_form == "additive"),
+  by = c("cell", "back_spec")
+) %>%
+  arrange(cell, back_spec)
+```
+
+## Coefficients
+
+Back-related terms in the additive models (Wald 95% CIs):
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+coefs <- map2(fits, names(fits), \(f, id) {
+  if (!isTRUE(f$ok)) {
+    return(NULL)
+  }
+  f$coefs %>% mutate(spec_id = id)
+}) %>%
+  bind_rows() %>%
+  left_join(specs %>% select(-formula), by = "spec_id")
+
+coefs %>%
+  filter(
+    place_form == "additive",
+    term != "(Intercept)",
+    term != "place"
+  ) %>%
+  mutate(back_spec = factor(back_spec, levels = spec_order)) %>%
+  ggplot(aes(
+    x = Estimate,
+    y = back_spec,
+    xmin = Estimate - 1.96 * `Std. Error`,
+    xmax = Estimate + 1.96 * `Std. Error`,
+    colour = term
+  )) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_pointrange(position = position_dodge(width = 0.5)) +
+  facet_grid(outcome ~ subset) +
+  labs(x = "Log-odds estimate", y = NULL, colour = "Term")
 ```

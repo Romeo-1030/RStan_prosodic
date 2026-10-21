@@ -1,0 +1,23 @@
+Loading required package: shiny
+here() starts at H:/Projects/RStan_prosodic
+
+Attaching package: 'bslib'
+
+The following object is masked from 'package:utils':
+
+    page
+
+
+Attaching package: 'dplyr'
+
+The following objects are masked from 'package:stats':
+
+    filter, lag
+
+The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union
+
+Warning: package 'ggplot2' was built under R version 4.4.3
+
+Listening on http://127.0.0.1:7788
