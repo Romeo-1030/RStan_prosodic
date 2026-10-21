@@ -28,6 +28,25 @@ fit_or_load <- function(name, expr) {
 }
 ```
 
+```{r}
+# Plots and tables are also saved to output/turn_bc_explore/
+fig_dir <- here("output", "turn_bc_explore")
+dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
+out_file <- function(name) file.path(fig_dir, name)
+
+save_plot <- function(p, name, width = 7, height = 5) {
+  ggsave(out_file(paste0(name, ".png")), p, width = width, height = height, dpi = 200)
+  p
+}
+# For AIC / anova / summary tables; row names (e.g. model names) become a column
+save_table <- function(x, name) {
+  df <- as.data.frame(x)
+  if (.row_names_info(df) > 0) df <- tibble::rownames_to_column(df, "row")
+  write_csv(df, out_file(paste0(name, ".csv")))
+  x
+}
+```
+
 
 ```{r}
 sbc <- readRDS(here("data", 'turns_updated.rds'))
@@ -120,7 +139,10 @@ model_overlap_on_modeback <- fit_or_load(
 
 
 ```{r}
-sjPlot::tab_model(model_overlap_on_place_meanback)
+sjPlot::tab_model(
+  model_overlap_on_place_meanback,
+  file = out_file("tab_overlap_place_meanback.html")
+)
 ```
 
 
@@ -131,7 +153,8 @@ sjPlot::tab_model(
   model_overlap_on_meanback,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_overlap_meanback.html")
 )
 sjPlot::tab_model(
   model_overlap_on_place_medianback,
@@ -139,7 +162,8 @@ sjPlot::tab_model(
   model_overlap_on_medianback,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_overlap_medianback.html")
 )
 sjPlot::tab_model(
   model_overlap_on_place_modeback,
@@ -147,7 +171,8 @@ sjPlot::tab_model(
   model_overlap_on_modeback,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_overlap_modeback.html")
 )
 ```
 
@@ -267,17 +292,19 @@ model_overlap_on_modeback_turn <- fit_or_load(
 
 
 ```{r}
-plot_predictions(
+(plot_predictions(
   model_overlap_on_modeback_bc,
   condition = list("mode_back")
 ) +
-  scale_y_continuous(limits = c(0, .03))
+  scale_y_continuous(limits = c(0, .03))) %>%
+  save_plot("pred_overlap_modeback_bc")
 
-plot_predictions(
+(plot_predictions(
   model_overlap_on_modeback_turn,
   condition = list("mode_back")
 ) +
-  scale_y_continuous(limits = c(0, .03))
+  scale_y_continuous(limits = c(0, .03))) %>%
+  save_plot("pred_overlap_modeback_turn")
 ```
 
 ```{r}
@@ -306,12 +333,14 @@ place_vals <- c(1, 2, 3, 4, 5, 6, 10, 14)
 plot_predictions(
   model_overlap_on_modeback_bc_int,
   condition = list("mode_back", place = place_vals)
-)
+) %>%
+  save_plot("pred_overlap_modeback_bc_int")
 
 plot_predictions(
   model_overlap_on_modeback_turn_int,
   condition = list("mode_back", place = place_vals)
-)
+) %>%
+  save_plot("pred_overlap_modeback_turn_int")
 ```
 
 
@@ -322,7 +351,8 @@ sjPlot::tab_model(
   model_overlap_on_modeback,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_overlap_modeback.html")
 )
 ```
 
@@ -391,15 +421,19 @@ model_turn_place_back_modeback <- fit_or_load(
 Mode back vs actual back (non-nested, so compare AIC):
 
 ```{r}
-AIC(model_bc_place_modeback, model_bc_place_back)
-AIC(model_turn_place_modeback, model_turn_place_back)
+AIC(model_bc_place_modeback, model_bc_place_back) %>%
+  save_table("aic__bc_place_modeback__bc_place_back")
+AIC(model_turn_place_modeback, model_turn_place_back) %>%
+  save_table("aic__turn_place_modeback__turn_place_back")
 ```
 
 Does mode back add anything over place + actual back (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_back, model_bc_place_back_modeback)
-anova(model_turn_place_back, model_turn_place_back_modeback)
+anova(model_bc_place_back, model_bc_place_back_modeback) %>%
+  save_table("anova__bc_place_back__bc_place_back_modeback")
+anova(model_turn_place_back, model_turn_place_back_modeback) %>%
+  save_table("anova__turn_place_back__turn_place_back_modeback")
 ```
 
 ```{r}
@@ -409,7 +443,8 @@ sjPlot::tab_model(
   model_bc_place_back_modeback,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_bc_modeback_vs_back.html")
 )
 sjPlot::tab_model(
   model_turn_place_modeback,
@@ -417,7 +452,8 @@ sjPlot::tab_model(
   model_turn_place_back_modeback,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_turn_modeback_vs_back.html")
 )
 ```
 
@@ -501,8 +537,10 @@ model_turn_place_back_modeback_int_sq <- fit_or_load(
 Does the quadratic place term help (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_back_modeback_int, model_bc_place_back_modeback_int_sq)
-anova(model_turn_place_back_modeback_int, model_turn_place_back_modeback_int_sq)
+anova(model_bc_place_back_modeback_int, model_bc_place_back_modeback_int_sq) %>%
+  save_table("anova__bc_place_back_modeback_int__bc_place_back_modeback_int_sq")
+anova(model_turn_place_back_modeback_int, model_turn_place_back_modeback_int_sq) %>%
+  save_table("anova__turn_place_back_modeback_int__turn_place_back_modeback_int_sq")
 ```
 
 ```{r}
@@ -513,33 +551,44 @@ sjPlot::tab_model(
   model_turn_place_back_modeback_int_sq,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_place_back_modeback_int_sq.html")
 )
 ```
 
 Mode back vs actual back, with interactions (non-nested, so compare AIC):
 
 ```{r}
-AIC(model_bc_place_modeback_int, model_bc_place_back_int)
-AIC(model_turn_place_modeback_int, model_turn_place_back_int)
+AIC(model_bc_place_modeback_int, model_bc_place_back_int) %>%
+  save_table("aic__bc_place_modeback_int__bc_place_back_int")
+AIC(model_turn_place_modeback_int, model_turn_place_back_int) %>%
+  save_table("aic__turn_place_modeback_int__turn_place_back_int")
 ```
 
 Does mode back (and its interaction with place) add anything over place * actual back (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_back_int, model_bc_place_back_modeback_int)
-anova(model_turn_place_back_int, model_turn_place_back_modeback_int)
+anova(model_bc_place_back_int, model_bc_place_back_modeback_int) %>%
+  save_table("anova__bc_place_back_int__bc_place_back_modeback_int")
+anova(model_turn_place_back_int, model_turn_place_back_modeback_int) %>%
+  save_table("anova__turn_place_back_int__turn_place_back_modeback_int")
 ```
 
 Do the interactions help over the additive models (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_modeback, model_bc_place_modeback_int)
-anova(model_bc_place_back, model_bc_place_back_int)
-anova(model_bc_place_back_modeback, model_bc_place_back_modeback_int)
-anova(model_turn_place_modeback, model_turn_place_modeback_int)
-anova(model_turn_place_back, model_turn_place_back_int)
-anova(model_turn_place_back_modeback, model_turn_place_back_modeback_int)
+anova(model_bc_place_modeback, model_bc_place_modeback_int) %>%
+  save_table("anova__bc_place_modeback__bc_place_modeback_int")
+anova(model_bc_place_back, model_bc_place_back_int) %>%
+  save_table("anova__bc_place_back__bc_place_back_int")
+anova(model_bc_place_back_modeback, model_bc_place_back_modeback_int) %>%
+  save_table("anova__bc_place_back_modeback__bc_place_back_modeback_int")
+anova(model_turn_place_modeback, model_turn_place_modeback_int) %>%
+  save_table("anova__turn_place_modeback__turn_place_modeback_int")
+anova(model_turn_place_back, model_turn_place_back_int) %>%
+  save_table("anova__turn_place_back__turn_place_back_int")
+anova(model_turn_place_back_modeback, model_turn_place_back_modeback_int) %>%
+  save_table("anova__turn_place_back_modeback__turn_place_back_modeback_int")
 ```
 
 ```{r}
@@ -549,7 +598,8 @@ sjPlot::tab_model(
   model_bc_place_back_modeback_int,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_bc_int.html")
 )
 ```
 
@@ -560,7 +610,8 @@ sjPlot::tab_model(
   model_turn_place_back_modeback_int,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_turn_int.html")
 )
 ```
 
@@ -570,12 +621,14 @@ place_vals <- c(1, 2, 3, 4, 5, 6, 10, 14)
 plot_predictions(
   model_bc_place_back_modeback_int,
   condition = list("mode_back", place = place_vals)
-)
+) %>%
+  save_plot("pred_bc_place_back_modeback_int")
 
 plot_predictions(
   model_turn_place_back_modeback_int,
   condition = list("mode_back", place = place_vals)
-)
+) %>%
+  save_plot("pred_turn_place_back_modeback_int")
 ```
 
 ```{r}
@@ -584,13 +637,15 @@ plot_slopes(
   model_bc_place_back_modeback_int,
   variables = "mode_back",
   condition = "place"
-)
+) %>%
+  save_plot("slopes_modeback_by_place_bc")
 
 plot_slopes(
   model_turn_place_back_modeback_int,
   variables = "mode_back",
   condition = "place"
-)
+) %>%
+  save_plot("slopes_modeback_by_place_turn")
 ```
 
 # Back prediction error
@@ -644,15 +699,19 @@ model_turn_place_modeback_backerr <- fit_or_load(
 Prediction error vs mode back vs actual back (non-nested, so compare AIC):
 
 ```{r}
-AIC(model_bc_place_backerr, model_bc_place_modeback, model_bc_place_back)
-AIC(model_turn_place_backerr, model_turn_place_modeback, model_turn_place_back)
+AIC(model_bc_place_backerr, model_bc_place_modeback, model_bc_place_back) %>%
+  save_table("aic__bc_place_backerr__bc_place_modeback__bc_place_back")
+AIC(model_turn_place_backerr, model_turn_place_modeback, model_turn_place_back) %>%
+  save_table("aic__turn_place_backerr__turn_place_modeback__turn_place_back")
 ```
 
 Does prediction error add anything over place + mode back (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_modeback, model_bc_place_modeback_backerr)
-anova(model_turn_place_modeback, model_turn_place_modeback_backerr)
+anova(model_bc_place_modeback, model_bc_place_modeback_backerr) %>%
+  save_table("anova__bc_place_modeback__bc_place_modeback_backerr")
+anova(model_turn_place_modeback, model_turn_place_modeback_backerr) %>%
+  save_table("anova__turn_place_modeback__turn_place_modeback_backerr")
 ```
 
 ```{r}
@@ -662,7 +721,8 @@ sjPlot::tab_model(
   model_bc_place_modeback_backerr,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_bc_backerr.html")
 )
 ```
 ```{r}
@@ -672,7 +732,8 @@ sjPlot::tab_model(
   model_turn_place_modeback_backerr,
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_turn_backerr.html")
 )
 ```
 
@@ -771,22 +832,26 @@ AIC(
   model_bc_place_backerr_nonterm,
   model_bc_place_modeback_nonterm,
   model_bc_place_back_nonterm
-)
+) %>%
+  save_table("aic__bc_place_backerr_nonterm__bc_place_modeback_nonterm__bc_place_back_nonterm")
 AIC(
   model_turn_place_backerr_nonterm,
   model_turn_place_modeback_nonterm,
   model_turn_place_back_nonterm
-)
+) %>%
+  save_table("aic__turn_place_backerr_nonterm__turn_place_modeback_nonterm__turn_place_back_nonterm")
 ```
 
 Does prediction error add anything over place + mode back (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_modeback_nonterm, model_bc_place_modeback_backerr_nonterm)
+anova(model_bc_place_modeback_nonterm, model_bc_place_modeback_backerr_nonterm) %>%
+  save_table("anova__bc_place_modeback_nonterm__bc_place_modeback_backerr_nonterm")
 anova(
   model_turn_place_modeback_nonterm,
   model_turn_place_modeback_backerr_nonterm
-)
+) %>%
+  save_table("anova__turn_place_modeback_nonterm__turn_place_modeback_backerr_nonterm")
 ```
 
 Coefficients vs the all-IU models (different data, so compare estimates only, not AIC):
@@ -798,7 +863,8 @@ sjPlot::tab_model(
   dv.labels = c("All IUs", "Non-terminal IUs"),
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_bc_nonterm_vs_all.html")
 )
 ```
 ```{r}
@@ -808,7 +874,8 @@ sjPlot::tab_model(
   dv.labels = c("All IUs", "Non-terminal IUs"),
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_turn_nonterm_vs_all.html")
 )
 ```
 
@@ -904,7 +971,8 @@ Sanity check: how the flag lines up with intonation, and some examples.
 ```{r}
 iu_syntax %>%
   left_join(unit_terminal, by = c("docId", "unitId")) %>%
-  count(unit_is_terminal, iu_possible_end)
+  count(unit_is_terminal, iu_possible_end) %>%
+  save_table("iu_terminal_vs_possible_end")
 
 iu_syntax %>%
   slice_sample(n = 40) %>%
@@ -997,22 +1065,26 @@ AIC(
   model_bc_place_backerr_incompl,
   model_bc_place_modeback_incompl,
   model_bc_place_back_incompl
-)
+) %>%
+  save_table("aic__bc_place_backerr_incompl__bc_place_modeback_incompl__bc_place_back_incompl")
 AIC(
   model_turn_place_backerr_incompl,
   model_turn_place_modeback_incompl,
   model_turn_place_back_incompl
-)
+) %>%
+  save_table("aic__turn_place_backerr_incompl__turn_place_modeback_incompl__turn_place_back_incompl")
 ```
 
 Does prediction error add anything over place + mode back (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_modeback_incompl, model_bc_place_modeback_backerr_incompl)
+anova(model_bc_place_modeback_incompl, model_bc_place_modeback_backerr_incompl) %>%
+  save_table("anova__bc_place_modeback_incompl__bc_place_modeback_backerr_incompl")
 anova(
   model_turn_place_modeback_incompl,
   model_turn_place_modeback_backerr_incompl
-)
+) %>%
+  save_table("anova__turn_place_modeback_incompl__turn_place_modeback_backerr_incompl")
 ```
 
 Coefficients vs the all-IU and non-terminal models (different data, so compare estimates only, not AIC):
@@ -1025,7 +1097,8 @@ sjPlot::tab_model(
   dv.labels = c("All IUs", "Non-terminal IUs", "Syntactically incomplete IUs"),
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_bc_incompl_vs_others.html")
 )
 ```
 ```{r}
@@ -1036,7 +1109,8 @@ sjPlot::tab_model(
   dv.labels = c("All IUs", "Non-terminal IUs", "Syntactically incomplete IUs"),
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_turn_incompl_vs_others.html")
 )
 ```
 
@@ -1060,7 +1134,8 @@ sbc_back_notboth %>%
     n_ius = n_distinct(docId, unitId),
     n_bc_onsets = sum(has_bc_onset & turn_has_bc_onset, na.rm = TRUE),
     n_turn_onsets = sum(has_turn_onset & turn_has_turn_onset, na.rm = TRUE)
-  )
+  ) %>%
+  save_table("notboth_counts")
 ```
 
 ```{r}
@@ -1140,22 +1215,26 @@ AIC(
   model_bc_place_backerr_notboth,
   model_bc_place_modeback_notboth,
   model_bc_place_back_notboth
-)
+) %>%
+  save_table("aic__bc_place_backerr_notboth__bc_place_modeback_notboth__bc_place_back_notboth")
 AIC(
   model_turn_place_backerr_notboth,
   model_turn_place_modeback_notboth,
   model_turn_place_back_notboth
-)
+) %>%
+  save_table("aic__turn_place_backerr_notboth__turn_place_modeback_notboth__turn_place_back_notboth")
 ```
 
 Does prediction error add anything over place + mode back (nested, so LRT):
 
 ```{r}
-anova(model_bc_place_modeback_notboth, model_bc_place_modeback_backerr_notboth)
+anova(model_bc_place_modeback_notboth, model_bc_place_modeback_backerr_notboth) %>%
+  save_table("anova__bc_place_modeback_notboth__bc_place_modeback_backerr_notboth")
 anova(
   model_turn_place_modeback_notboth,
   model_turn_place_modeback_backerr_notboth
-)
+) %>%
+  save_table("anova__turn_place_modeback_notboth__turn_place_modeback_backerr_notboth")
 ```
 
 Coefficients across subsets (different data, so compare estimates only, not AIC):
@@ -1176,7 +1255,8 @@ sjPlot::tab_model(
   ),
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_bc_subsets.html")
 )
 ```
 ```{r}
@@ -1195,6 +1275,7 @@ sjPlot::tab_model(
   ),
   show.aic = TRUE,
   show.loglik = TRUE,
-  show.dev = TRUE
+  show.dev = TRUE,
+  file = out_file("tab_turn_subsets.html")
 )
 ```

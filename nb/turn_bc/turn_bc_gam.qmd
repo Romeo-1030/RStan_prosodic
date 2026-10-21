@@ -2,7 +2,7 @@
 title: "Turn / BC onsets: GAMs"
 ---
 
-The `place * back + place * mode_back` models from `turn_bc_explore.qmd`, refitted as GAMs: a smooth for each main effect, tensor-product interactions (`ti`) for place × back and place × mode back, and a random intercept for document.
+The place / back / mode back models from `turn_bc_explore.qmd`, up to `place * back + place * mode_back`, refitted as GAMs: a smooth for each main effect, tensor-product interactions (`ti`) for place × back and place × mode back, and a random intercept for document. Fitted on all IUs and on non-terminal IUs only.
 
 ```{r}
 library(here)
@@ -29,6 +29,37 @@ fit_or_load <- function(name, expr) {
     saveRDS(model, path)
     model
   }
+}
+```
+
+```{r}
+# Plots and tables are also saved to output/turn_bc_gam/
+fig_dir <- here("output", "turn_bc_gam")
+dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
+out_file <- function(name) file.path(fig_dir, name)
+
+save_plot <- function(p, name, width = 7, height = 5) {
+  ggsave(out_file(paste0(name, ".png")), p, width = width, height = height, dpi = 200)
+  p
+}
+# Base graphics: draw once to the file and once to the notebook
+save_base_plot <- function(name, draw, width = 10, height = 5) {
+  png(out_file(paste0(name, ".png")), width = width, height = height, units = "in", res = 200)
+  draw()
+  dev.off()
+  draw()
+}
+# Row names (e.g. term names) become a column
+save_table <- function(x, name) {
+  df <- as.data.frame(x)
+  if (.row_names_info(df) > 0) df <- tibble::rownames_to_column(df, "row")
+  write_csv(df, out_file(paste0(name, ".csv")))
+  x
+}
+# Printed output, e.g. model summaries
+save_text <- function(x, name) {
+  writeLines(capture.output(print(x)), out_file(paste0(name, ".txt")))
+  invisible(x)
 }
 ```
 
@@ -112,132 +143,282 @@ sbc <- sbc %>%
 # As sbc_back in turn_bc_explore.qmd; docId as a factor for the random effect smooth
 sbc_back <- sbc %>%
   filter(place != 1, !is.na(mean_back), !is.na(back), !is.na(mode_back)) %>%
-  mutate(docId = factor(docId))
+  mutate(
+    docId = factor(docId),
+    # Positive = more words left in the unit than the mode predicts
+    back_err = back - mode_back
+  )
 
 sbc_back_bc <- sbc_back %>% filter(turn_has_bc_onset)
 sbc_back_turn <- sbc_back %>% filter(turn_has_turn_onset)
 
+# Non-terminal IUs only, as in "Non-terminal IUs only" in turn_bc_explore.qmd
+unit_terminal <- sbc %>%
+  group_by(docId, unitId) %>%
+  summarise(
+    unit_is_terminal = any(endNote %in% c("final", "appeal")),
+    .groups = "drop"
+  )
+nonterm <- function(data) {
+  data %>%
+    left_join(unit_terminal, by = c("docId", "unitId")) %>%
+    filter(!unit_is_terminal) %>%
+    # The join with character docIds drops the factor
+    mutate(docId = factor(docId))
+}
+
 sbc_back %>%
-  summarise(across(c(place, back, mode_back), \(x) n_distinct(x)))
+  summarise(across(c(place, back, mode_back, back_err), \(x) n_distinct(x)))
 ```
 
+
 # Models
+
+GAM versions of the place / back / mode back models in `turn_bc_explore.qmd` ("Mode back vs actual back" and "Interacting with place"), each fitted with smooths and, for comparison, with the same linear terms as the GLMMs. All have a random intercept for document. Every model is fitted on all IUs and on non-terminal IUs only.
 
 `mode_back` only takes `r n_distinct(sbc_back$mode_back)` values, so its basis is kept small. `ti()` terms hold only the interaction, so the main-effect smooths match the main effects in the GLMMs.
 
 ```{r}
-gam_formula <- function(outcome) {
-  reformulate(
-    c(
-      "s(place, k = 8)",
-      "s(back, k = 8)",
-      "s(mode_back, k = 5)",
-      "ti(place, back, k = c(6, 6))",
-      "ti(place, mode_back, k = c(6, 5))",
-      "s(docId, bs = 're')"
-    ),
-    response = outcome
+s_place <- "s(place, k = 8)"
+s_back <- "s(back, k = 8)"
+s_modeback <- "s(mode_back, k = 5)"
+ti_place_back <- "ti(place, back, k = c(6, 6))"
+ti_place_modeback <- "ti(place, mode_back, k = c(6, 5))"
+
+model_specs <- list(
+  place_modeback = list(
+    smooth = c(s_place, s_modeback),
+    linear = "place + mode_back"
+  ),
+  place_back = list(
+    smooth = c(s_place, s_back),
+    linear = "place + back"
+  ),
+  place_back_modeback = list(
+    smooth = c(s_place, s_back, s_modeback),
+    linear = "place + back + mode_back"
+  ),
+  place_modeback_int = list(
+    smooth = c(s_place, s_modeback, ti_place_modeback),
+    linear = "place * mode_back"
+  ),
+  place_back_int = list(
+    smooth = c(s_place, s_back, ti_place_back),
+    linear = "place * back"
+  ),
+  place_back_modeback_int = list(
+    smooth = c(s_place, s_back, s_modeback, ti_place_back, ti_place_modeback),
+    linear = "place * back + place * mode_back"
+  )
+)
+
+onset_data <- list(
+  all = list(bc = sbc_back_bc, turn = sbc_back_turn),
+  nonterm = list(bc = nonterm(sbc_back_bc), turn = nonterm(sbc_back_turn))
+)
+subset_labels <- c(all = "All IUs", nonterm = "Non-terminal IUs")
+
+fit_gam <- function(subset, kind, spec, type, specs = model_specs) {
+  name <- paste0(
+    "gam_",
+    kind,
+    "_",
+    spec,
+    if (subset != "all") paste0("_", subset),
+    if (type == "linear") "_linear"
+  )
+  fit_or_load(
+    name,
+    bam(
+      reformulate(
+        c(specs[[spec]][[type]], "s(docId, bs = 're')"),
+        response = paste0("has_", kind, "_onset")
+      ),
+      data = onset_data[[subset]][[kind]],
+      family = binomial(link = "logit"),
+      method = "fREML",
+      discrete = TRUE
+    )
   )
 }
 
-gam_bc_place_back_modeback_int <- fit_or_load(
-  "gam_bc_place_back_modeback_int",
-  bam(
-    gam_formula("has_bc_onset"),
-    data = sbc_back_bc,
-    family = binomial(link = "logit"),
-    method = "fREML",
-    discrete = TRUE
-  )
-)
-gam_turn_place_back_modeback_int <- fit_or_load(
-  "gam_turn_place_back_modeback_int",
-  bam(
-    gam_formula("has_turn_onset"),
-    data = sbc_back_turn,
-    family = binomial(link = "logit"),
-    method = "fREML",
-    discrete = TRUE
-  )
-)
+# gams$nonterm$bc$smooth$place_back etc.
+named <- \(x) setNames(x, x)
+gams <- lapply(named(names(onset_data)), \(subset) {
+  lapply(named(c("bc", "turn")), \(kind) {
+    lapply(named(c("smooth", "linear")), \(type) {
+      lapply(named(names(model_specs)), \(spec) {
+        fit_gam(subset, kind, spec, type)
+      })
+    })
+  })
+})
 ```
 
-```{r}
-summary(gam_bc_place_back_modeback_int)
-summary(gam_turn_place_back_modeback_int)
-```
-
-Basis size checks (low k-index with a small p-value suggests k is too small):
+Summaries of the full models (all summaries are saved to the output folder):
 
 ```{r}
-k.check(gam_bc_place_back_modeback_int)
-k.check(gam_turn_place_back_modeback_int)
-```
-
-Do the smooths beat linear terms? AIC from `bam` is conditional on the document effects (they count as effective df), so it can't be set against the glmer AIC. Compare instead with the linear model fitted the same way:
-
-```{r}
-linear_formula <- function(outcome) {
-  reformulate(
-    c("place * back", "place * mode_back", "s(docId, bs = 're')"),
-    response = outcome
-  )
+for (subset in names(gams)) {
+  for (kind in names(gams[[subset]])) {
+    for (type in names(gams[[subset]][[kind]])) {
+      save_text(
+        lapply(gams[[subset]][[kind]][[type]], summary),
+        sprintf("summaries_%s_%s_%s", subset, kind, type)
+      )
+    }
+  }
 }
 
-gam_bc_place_back_modeback_int_linear <- fit_or_load(
-  "gam_bc_place_back_modeback_int_linear",
-  bam(
-    linear_formula("has_bc_onset"),
-    data = sbc_back_bc,
-    family = binomial(link = "logit"),
-    method = "fREML",
-    discrete = TRUE
-  )
-)
-gam_turn_place_back_modeback_int_linear <- fit_or_load(
-  "gam_turn_place_back_modeback_int_linear",
-  bam(
-    linear_formula("has_turn_onset"),
-    data = sbc_back_turn,
-    family = binomial(link = "logit"),
-    method = "fREML",
-    discrete = TRUE
-  )
-)
-
-AIC(gam_bc_place_back_modeback_int_linear, gam_bc_place_back_modeback_int)
-AIC(gam_turn_place_back_modeback_int_linear, gam_turn_place_back_modeback_int)
+summary(gams$all$bc$smooth$place_back_modeback_int)
+summary(gams$all$turn$smooth$place_back_modeback_int)
+summary(gams$nonterm$bc$smooth$place_back_modeback_int)
+summary(gams$nonterm$turn$smooth$place_back_modeback_int)
 ```
 
-Sanity check: the linear `bam` fits should reproduce the glmer coefficients.
+Basis size checks for the full models (low k-index with a small p-value suggests k is too small):
+
+```{r}
+for (subset in names(gams)) {
+  for (kind in c("bc", "turn")) {
+    cat("\n", subset_labels[[subset]], "/", kind, "\n")
+    k.check(gams[[subset]][[kind]]$smooth$place_back_modeback_int) %>%
+      save_table(sprintf("kcheck_%s_%s_place_back_modeback_int", subset, kind)) %>%
+      print()
+  }
+}
+```
+
+Sanity check: the linear `bam` fits on all IUs should reproduce the glmer coefficients.
 
 ```{r}
 glmm_dir <- here("output", "turn_bc_models")
-compare_coefs <- function(glmm_name, gam) {
-  beta <- fixef(readRDS(file.path(glmm_dir, paste0(glmm_name, ".rds"))))
-  cbind(glmer = beta, bam = coef(gam)[names(beta)])
+compare_coefs <- function(kind, spec) {
+  glmm <- readRDS(file.path(glmm_dir, sprintf("model_%s_%s.rds", kind, spec)))
+  beta <- fixef(glmm)
+  bam_beta <- coef(gams$all[[kind]]$linear[[spec]])[names(beta)]
+  tibble(
+    spec = spec,
+    term = names(beta),
+    glmer = unname(beta),
+    bam = unname(bam_beta)
+  )
 }
-compare_coefs(
-  "model_bc_place_back_modeback_int",
-  gam_bc_place_back_modeback_int_linear
+
+lapply(named(c("bc", "turn")), \(kind) {
+  lapply(names(model_specs), \(spec) compare_coefs(kind, spec)) %>%
+    bind_rows() %>%
+    save_table(paste0("coefs_glmer_vs_bam_", kind))
+})
+```
+
+# Model comparison
+
+AIC from `bam` is conditional on the document effects, whereas glmer's is marginal, so these values can't be set against the glmer AICs (nor across subsets, which use different data); compare within each table only.
+
+With $b_d \sim N(0, \sigma^2)$ the intercept for document $d$ and $\eta_i = x_i^\top \beta + b_{d(i)}$, **glmer** integrates the document effects out and maximises the *marginal* likelihood
+
+$$
+L_\text{marg}(\beta, \sigma) = \prod_d \int \Big[ \prod_{i \in d} p(y_i \mid \beta, b_d) \Big] \, \phi(b_d; 0, \sigma^2) \, db_d,
+\qquad
+\text{AIC}_\text{marg} = -2 \log L_\text{marg}(\hat\beta, \hat\sigma) + 2(p + 1),
+$$
+
+so the document effects cost one parameter ($\sigma$) on top of the $p$ fixed effects.
+
+**bam** treats each $b_d$ (like the smooth basis coefficients) as a penalised coefficient, estimates them, and evaluates the likelihood *conditional* on the estimates:
+
+$$
+\text{AIC}_\text{cond} = -2 \log p(y \mid \hat\beta, \hat b) + 2\tau,
+\qquad
+\tau = \operatorname{tr}\!\big[ (X^\top W X + S_\lambda)^{-1} X^\top W X \big] = \sum_j \text{edf}_j,
+$$
+
+where $X$ holds all model columns (parametric, smooth bases and one dummy per document), $W$ the IRLS weights and $S_\lambda$ the penalties. Each document's intercept counts as a fraction of a parameter, between 0 (fully shrunk to 0) and 1 (unpenalised); this is the "edf" of `s(docId)` in the summaries (`AIC()` also adds a correction for estimating $\lambda$; Wood, Pya & Säfken 2016). Because $\hat b$ is fitted to each document, $\log p(y \mid \hat\beta, \hat b) > \log L_\text{marg}$, and the penalty $2\tau$ is correspondingly larger, so the two AICs are on different scales. Within this notebook every model treats the document effects the same way, so the conditional AICs are comparable with each other.
+
+```{r}
+# models: list(smooth = list(<spec> = fit, ...), linear = ...)
+aic_table <- function(models) {
+  lapply(names(models), \(type) {
+    lapply(names(models[[type]]), \(spec) {
+      m <- models[[type]][[spec]]
+      tibble(
+        spec = spec,
+        type = type,
+        edf = sum(m$edf),
+        AIC = AIC(m),
+        dev_expl = summary(m)$dev.expl
+      )
+    })
+  }) %>%
+    bind_rows() %>%
+    mutate(dAIC = AIC - min(AIC)) %>%
+    arrange(AIC)
+}
+
+for (subset in names(gams)) {
+  for (kind in c("bc", "turn")) {
+    cat("\n", subset_labels[[subset]], "/", kind, "\n")
+    aic_table(gams[[subset]][[kind]]) %>%
+      save_table(sprintf("aic_%s_%s", subset, kind)) %>%
+      print()
+  }
+}
+```
+
+Nested comparisons, as the LRTs in `turn_bc_explore.qmd` (approximate chi-squared tests on the deviance difference). For penalised fits the df is a difference in total edf, which can come out negative when the document effects shrink differently between the two models; there is no p-value then, and the AIC table is the better guide for the smooth models.
+
+```{r}
+nested_pairs <- tribble(
+  ~simpler, ~fuller,
+  "place_back", "place_back_modeback",
+  "place_back_int", "place_back_modeback_int",
+  "place_modeback", "place_modeback_int",
+  "place_back", "place_back_int",
+  "place_back_modeback", "place_back_modeback_int"
 )
-compare_coefs(
-  "model_turn_place_back_modeback_int",
-  gam_turn_place_back_modeback_int_linear
-)
+
+nested_tests <- function(models, pairs = nested_pairs) {
+  lapply(names(models), \(type) {
+    lapply(seq_len(nrow(pairs)), \(i) {
+      m0 <- models[[type]][[pairs$simpler[i]]]
+      m1 <- models[[type]][[pairs$fuller[i]]]
+      a <- anova(m0, m1, test = "Chisq")
+      tibble(
+        type = type,
+        simpler = pairs$simpler[i],
+        fuller = pairs$fuller[i],
+        df = a$Df[2],
+        deviance = a$Deviance[2],
+        p = a$`Pr(>Chi)`[2]
+      )
+    })
+  }) %>%
+    bind_rows()
+}
+
+for (subset in names(gams)) {
+  for (kind in c("bc", "turn")) {
+    cat("\n", subset_labels[[subset]], "/", kind, "\n")
+    nested_tests(gams[[subset]][[kind]]) %>%
+      save_table(sprintf("nested_%s_%s", subset, kind)) %>%
+      print()
+  }
+}
 ```
 
 # Smooths
 
+Smooths of the full models:
+
 ```{r}
 # Partial effect of each smooth (log-odds, centred), with 95% CIs
-plot_main_smooths <- function(model, data) {
-  vars <- c("place", "back", "mode_back")
+plot_main_smooths <- function(model, data, vars = c("place", "back", "mode_back")) {
   lapply(vars, \(v) {
     grid <- data.frame(
       place = median(data$place),
       back = median(data$back),
       mode_back = median(data$mode_back),
+      back_err = median(data$back_err),
       docId = data$docId[1]
     )
     grid <- grid[rep(1, 100), ]
@@ -260,45 +441,135 @@ plot_main_smooths <- function(model, data) {
     labs(x = NULL, y = "Partial effect (log-odds)")
 }
 
-plot_main_smooths(gam_bc_place_back_modeback_int, sbc_back_bc) +
-  ggtitle("BC onset")
-plot_main_smooths(gam_turn_place_back_modeback_int, sbc_back_turn) +
-  ggtitle("Turn onset")
+for (subset in names(gams)) {
+  for (kind in c("bc", "turn")) {
+    p <- plot_main_smooths(
+      gams[[subset]][[kind]]$smooth$place_back_modeback_int,
+      onset_data[[subset]][[kind]]
+    ) +
+      ggtitle(sprintf("%s onset, %s", toupper(kind), subset_labels[[subset]]))
+    print(save_plot(
+      p,
+      sprintf("smooths_%s_%s_place_back_modeback_int", subset, kind),
+      width = 9,
+      height = 4
+    ))
+  }
+}
 ```
 
 Fitted surfaces (log-odds; the other variable at its typical value, blank where there's no data nearby):
 
 ```{r}
-par(mfrow = c(1, 2))
-vis.gam(
-  gam_bc_place_back_modeback_int,
-  view = c("place", "back"),
-  plot.type = "contour",
-  too.far = 0.1,
-  main = "BC: place x back"
-)
-vis.gam(
-  gam_bc_place_back_modeback_int,
-  view = c("place", "mode_back"),
-  plot.type = "contour",
-  too.far = 0.1,
-  main = "BC: place x mode back"
-)
-vis.gam(
-  gam_turn_place_back_modeback_int,
-  view = c("place", "back"),
-  plot.type = "contour",
-  too.far = 0.1,
-  main = "Turn: place x back"
-)
-vis.gam(
-  gam_turn_place_back_modeback_int,
-  view = c("place", "mode_back"),
-  plot.type = "contour",
-  too.far = 0.1,
-  main = "Turn: place x mode back"
-)
-par(mfrow = c(1, 1))
+plot_surfaces <- function(model, label, back_var = "back") {
+  par(mfrow = c(1, 2))
+  vis.gam(
+    model,
+    view = c("place", back_var),
+    plot.type = "contour",
+    too.far = 0.1,
+    main = paste(label, "place x", back_var)
+  )
+  vis.gam(
+    model,
+    view = c("place", "mode_back"),
+    plot.type = "contour",
+    too.far = 0.1,
+    main = paste(label, "place x mode back")
+  )
+  par(mfrow = c(1, 1))
+}
+
+for (subset in names(gams)) {
+  for (kind in c("bc", "turn")) {
+    save_base_plot(
+      sprintf("surfaces_%s_%s_place_back_modeback_int", subset, kind),
+      \() {
+        plot_surfaces(
+          gams[[subset]][[kind]]$smooth$place_back_modeback_int,
+          sprintf("%s, %s:", toupper(kind), subset)
+        )
+      }
+    )
+  }
+}
+```
+
+# Slopes
+
+Effect of one more word of back / mode back on P(onset), as a function of place (the GAM counterpart of the `plot_slopes()` plots in `turn_bc_explore.qmd`). The slopes are finite differences of the linear predictor matrix, as in `?predict.gam`: with $X_0$ and $X_1$ the `lpmatrix` at $x$ and $x + \varepsilon$,
+
+$$
+\frac{\partial \eta}{\partial x} \approx \frac{(X_1 - X_0)\hat\beta}{\varepsilon},
+\qquad
+\frac{\partial P}{\partial x} \approx \frac{\operatorname{logit}^{-1}(X_1\hat\beta) - \operatorname{logit}^{-1}(X_0\hat\beta)}{\varepsilon},
+$$
+
+with standard errors from $\hat V_\beta$ (exact for the log-odds slope, delta method for the probability slope). The other variable is held at its median, the document effect is excluded, and place runs up to its 99th percentile.
+
+```{r}
+slopes_by_place <- function(model, data, var, eps = 1e-4) {
+  grid <- tibble(
+    place = seq(min(data$place), quantile(data$place, 0.99), length.out = 100),
+    back = median(data$back),
+    mode_back = median(data$mode_back),
+    back_err = median(data$back_err),
+    docId = data$docId[1]
+  )
+  grid_eps <- grid
+  grid_eps[[var]] <- grid_eps[[var]] + eps
+  X0 <- predict(model, grid, type = "lpmatrix", exclude = "s(docId)")
+  X1 <- predict(model, grid_eps, type = "lpmatrix", exclude = "s(docId)")
+  beta <- coef(model)
+  V <- vcov(model)
+  p0 <- drop(plogis(X0 %*% beta))
+  p1 <- drop(plogis(X1 %*% beta))
+  # Gradients of each slope with respect to beta
+  D_link <- (X1 - X0) / eps
+  D_prob <- (X1 * (p1 * (1 - p1)) - X0 * (p0 * (1 - p0))) / eps
+  bind_rows(
+    tibble(
+      place = grid$place,
+      scale = "log-odds",
+      slope = drop(D_link %*% beta),
+      se = sqrt(rowSums((D_link %*% V) * D_link))
+    ),
+    tibble(
+      place = grid$place,
+      scale = "probability",
+      slope = (p1 - p0) / eps,
+      se = sqrt(rowSums((D_prob %*% V) * D_prob))
+    )
+  ) %>%
+    mutate(variable = var)
+}
+
+plot_slopes_gam <- function(model, data, vars = c("mode_back", "back")) {
+  lapply(vars, \(v) slopes_by_place(model, data, v)) %>%
+    bind_rows() %>%
+    ggplot(aes(place, slope)) +
+    geom_hline(yintercept = 0, colour = "grey60") +
+    geom_ribbon(aes(ymin = slope - 1.96 * se, ymax = slope + 1.96 * se), alpha = 0.2) +
+    geom_line() +
+    facet_grid(scale ~ variable, scales = "free_y") +
+    labs(y = "Slope (per word)")
+}
+
+for (subset in names(gams)) {
+  for (kind in c("bc", "turn")) {
+    p <- plot_slopes_gam(
+      gams[[subset]][[kind]]$smooth$place_back_modeback_int,
+      onset_data[[subset]][[kind]]
+    ) +
+      ggtitle(sprintf("%s onset, %s", toupper(kind), subset_labels[[subset]]))
+    print(save_plot(
+      p,
+      sprintf("slopes_%s_%s_place_back_modeback_int", subset, kind),
+      width = 8,
+      height = 6
+    ))
+  }
+}
 ```
 
 # Predictions
@@ -313,7 +584,11 @@ plot_predictions_gam <- function(model, data, min_n = 20) {
     filter(place %in% place_vals) %>%
     count(place, mode_back) %>%
     filter(n >= min_n) %>%
-    mutate(back = median(data$back), docId = data$docId[1])
+    mutate(
+      back = median(data$back),
+      back_err = median(data$back_err),
+      docId = data$docId[1]
+    )
   pr <- predict(model, grid, exclude = "s(docId)", se.fit = TRUE)
   grid %>%
     mutate(
@@ -331,8 +606,212 @@ plot_predictions_gam <- function(model, data, min_n = 20) {
     labs(colour = "place", y = "P(onset)")
 }
 
-plot_predictions_gam(gam_bc_place_back_modeback_int, sbc_back_bc) +
-  ggtitle("BC onset")
-plot_predictions_gam(gam_turn_place_back_modeback_int, sbc_back_turn) +
-  ggtitle("Turn onset")
+for (subset in names(gams)) {
+  for (kind in c("bc", "turn")) {
+    p <- plot_predictions_gam(
+      gams[[subset]][[kind]]$smooth$place_back_modeback_int,
+      onset_data[[subset]][[kind]]
+    ) +
+      ggtitle(sprintf("%s onset, %s", toupper(kind), subset_labels[[subset]]))
+    print(save_plot(p, sprintf("pred_%s_%s_place_back_modeback_int", subset, kind)))
+  }
+}
+```
+
+# Prediction error instead of actual back
+
+The same models with the back prediction error, `back_err = back - mode_back`, in place of actual back (as in "Back prediction error" in `turn_bc_explore.qmd`). `mode_back` is then the expected number of words left given the word and its place, and `back_err` how many more (or fewer) words are actually left than that, so each term reads on its own: the effect of the expected remainder at a fixed surprise, and the effect of the surprise at a fixed expectation.
+
+With linear terms this is only a reparameterisation, since $\beta_b\,\text{back} + \beta_m\,\text{mode\_back} = \beta_b\,\text{back\_err} + (\beta_b + \beta_m)\,\text{mode\_back}$ (and likewise for the interactions with place), so the linear models with both `mode_back` and `back_err` give the same fits as their `back` + `mode_back` counterparts. The smooth versions are different models: they put a smooth on the error rather than on actual back.
+
+```{r}
+s_backerr <- "s(back_err, k = 8)"
+ti_place_backerr <- "ti(place, back_err, k = c(6, 6))"
+
+backerr_specs <- list(
+  place_backerr = list(
+    smooth = c(s_place, s_backerr),
+    linear = "place + back_err"
+  ),
+  place_modeback_backerr = list(
+    smooth = c(s_place, s_modeback, s_backerr),
+    linear = "place + mode_back + back_err"
+  ),
+  place_backerr_int = list(
+    smooth = c(s_place, s_backerr, ti_place_backerr),
+    linear = "place * back_err"
+  ),
+  place_modeback_backerr_int = list(
+    smooth = c(s_place, s_modeback, s_backerr, ti_place_modeback, ti_place_backerr),
+    linear = "place * mode_back + place * back_err"
+  )
+)
+
+# gams_err$nonterm$bc$smooth$place_backerr etc.
+gams_err <- lapply(named(names(onset_data)), \(subset) {
+  lapply(named(c("bc", "turn")), \(kind) {
+    lapply(named(c("smooth", "linear")), \(type) {
+      lapply(named(names(backerr_specs)), \(spec) {
+        fit_gam(subset, kind, spec, type, specs = backerr_specs)
+      })
+    })
+  })
+})
+```
+
+```{r}
+for (subset in names(gams_err)) {
+  for (kind in names(gams_err[[subset]])) {
+    for (type in names(gams_err[[subset]][[kind]])) {
+      save_text(
+        lapply(gams_err[[subset]][[kind]][[type]], summary),
+        sprintf("backerr_summaries_%s_%s_%s", subset, kind, type)
+      )
+    }
+  }
+}
+
+summary(gams_err$all$bc$smooth$place_modeback_backerr_int)
+summary(gams_err$all$turn$smooth$place_modeback_backerr_int)
+summary(gams_err$nonterm$bc$smooth$place_modeback_backerr_int)
+summary(gams_err$nonterm$turn$smooth$place_modeback_backerr_int)
+```
+
+```{r}
+for (subset in names(gams_err)) {
+  for (kind in c("bc", "turn")) {
+    cat("\n", subset_labels[[subset]], "/", kind, "\n")
+    k.check(gams_err[[subset]][[kind]]$smooth$place_modeback_backerr_int) %>%
+      save_table(sprintf("backerr_kcheck_%s_%s", subset, kind)) %>%
+      print()
+  }
+}
+```
+
+## Model comparison
+
+The prediction-error models alongside the `place_modeback` and actual-back models from above (same data, so the conditional AICs are comparable within each table). The linear `place_modeback_backerr(_int)` rows should match the linear `place_back_modeback(_int)` rows.
+
+```{r}
+# Both sets of fits for one subset / onset type, by type
+combined_models <- function(subset, kind) {
+  lapply(named(c("smooth", "linear")), \(type) {
+    c(gams[[subset]][[kind]][[type]], gams_err[[subset]][[kind]][[type]])
+  })
+}
+
+for (subset in names(gams_err)) {
+  for (kind in c("bc", "turn")) {
+    cat("\n", subset_labels[[subset]], "/", kind, "\n")
+    models <- combined_models(subset, kind)
+    keep <- c(
+      "place_modeback",
+      "place_back_modeback",
+      "place_back_modeback_int",
+      names(backerr_specs)
+    )
+    aic_table(lapply(models, \(m) m[keep])) %>%
+      save_table(sprintf("backerr_aic_%s_%s", subset, kind)) %>%
+      print()
+  }
+}
+```
+
+Nested comparisons (see the note above on negative df):
+
+```{r}
+backerr_pairs <- tribble(
+  ~simpler, ~fuller,
+  "place_modeback", "place_modeback_backerr",
+  "place_backerr", "place_modeback_backerr",
+  "place_backerr", "place_backerr_int",
+  "place_modeback_backerr", "place_modeback_backerr_int"
+)
+
+for (subset in names(gams_err)) {
+  for (kind in c("bc", "turn")) {
+    cat("\n", subset_labels[[subset]], "/", kind, "\n")
+    nested_tests(combined_models(subset, kind), backerr_pairs) %>%
+      save_table(sprintf("backerr_nested_%s_%s", subset, kind)) %>%
+      print()
+  }
+}
+```
+
+## Smooths
+
+```{r}
+for (subset in names(gams_err)) {
+  for (kind in c("bc", "turn")) {
+    p <- plot_main_smooths(
+      gams_err[[subset]][[kind]]$smooth$place_modeback_backerr_int,
+      onset_data[[subset]][[kind]],
+      vars = c("place", "mode_back", "back_err")
+    ) +
+      ggtitle(sprintf("%s onset, %s", toupper(kind), subset_labels[[subset]]))
+    print(save_plot(
+      p,
+      sprintf("backerr_smooths_%s_%s", subset, kind),
+      width = 9,
+      height = 4
+    ))
+  }
+}
+```
+
+```{r}
+for (subset in names(gams_err)) {
+  for (kind in c("bc", "turn")) {
+    save_base_plot(
+      sprintf("backerr_surfaces_%s_%s", subset, kind),
+      \() {
+        plot_surfaces(
+          gams_err[[subset]][[kind]]$smooth$place_modeback_backerr_int,
+          sprintf("%s, %s:", toupper(kind), subset),
+          back_var = "back_err"
+        )
+      }
+    )
+  }
+}
+```
+
+## Slopes
+
+As above, but for mode back (at the median prediction error) and the prediction error (at the median mode back).
+
+```{r}
+for (subset in names(gams_err)) {
+  for (kind in c("bc", "turn")) {
+    p <- plot_slopes_gam(
+      gams_err[[subset]][[kind]]$smooth$place_modeback_backerr_int,
+      onset_data[[subset]][[kind]],
+      vars = c("mode_back", "back_err")
+    ) +
+      ggtitle(sprintf("%s onset, %s", toupper(kind), subset_labels[[subset]]))
+    print(save_plot(
+      p,
+      sprintf("backerr_slopes_%s_%s", subset, kind),
+      width = 8,
+      height = 6
+    ))
+  }
+}
+```
+
+## Predictions
+
+P(onset) against mode back at several places, with the prediction error held at its median.
+
+```{r}
+for (subset in names(gams_err)) {
+  for (kind in c("bc", "turn")) {
+    p <- plot_predictions_gam(
+      gams_err[[subset]][[kind]]$smooth$place_modeback_backerr_int,
+      onset_data[[subset]][[kind]]
+    ) +
+      ggtitle(sprintf("%s onset, %s", toupper(kind), subset_labels[[subset]]))
+    print(save_plot(p, sprintf("backerr_pred_%s_%s", subset, kind)))
+  }
+}
 ```

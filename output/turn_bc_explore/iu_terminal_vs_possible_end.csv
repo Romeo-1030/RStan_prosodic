@@ -1,0 +1,5 @@
+unit_is_terminal,iu_possible_end,n
+FALSE,FALSE,23624
+FALSE,TRUE,10859
+TRUE,FALSE,256
+TRUE,TRUE,29661

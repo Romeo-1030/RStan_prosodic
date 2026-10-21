@@ -1,0 +1,9 @@
+type,simpler,fuller,df,deviance,p
+smooth,place_modeback,place_modeback_backerr,3.5196855521426187,53.678720320636785,2.999571282454706e-11
+smooth,place_backerr,place_modeback_backerr,-4.187347571125429,43.623774277978555,NA
+smooth,place_backerr,place_backerr_int,0.18068667071202071,19.190741985435125,7.567346163734671e-7
+smooth,place_modeback_backerr,place_modeback_backerr_int,5.520200920494972,32.157465355025124,9.491658826873756e-6
+linear,place_modeback,place_modeback_backerr,0.9950326958642108,50.50532978456704,1.173061342804892e-12
+linear,place_backerr,place_modeback_backerr,1.0180413876005332,26.23818007770842,3.1453902993291175e-7
+linear,place_backerr,place_backerr_int,0.9911169486877043,10.835980216390453,9.787458549678028e-4
+linear,place_modeback_backerr,place_modeback_backerr_int,1.9973341720542521,27.70464187258858,9.596613411314016e-7

@@ -1,0 +1,110 @@
+$place_backerr
+
+Family: binomial 
+Link function: logit 
+
+Formula:
+has_bc_onset ~ s(place, k = 8) + s(back_err, k = 8) + s(docId, 
+    bs = "re")
+
+Parametric coefficients:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)  -4.4944     0.3461  -12.99   <2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Approximate significance of smooth terms:
+               edf Ref.df Chi.sq  p-value    
+s(place)     2.625  3.258  11.76   0.0174 *  
+s(back_err)  2.359  2.969  34.84 1.83e-07 ***
+s(docId)    36.060 54.000 186.93  < 2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+R-sq.(adj) =  0.0084   Deviance explained = 5.48%
+fREML =  34313  Scale est. = 1         n = 34516
+
+$place_modeback_backerr
+
+Family: binomial 
+Link function: logit 
+
+Formula:
+has_bc_onset ~ s(place, k = 8) + s(mode_back, k = 5) + s(back_err, 
+    k = 8) + s(docId, bs = "re")
+
+Parametric coefficients:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)  -4.7047     0.3697  -12.73   <2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Approximate significance of smooth terms:
+                edf Ref.df Chi.sq p-value    
+s(place)      3.225  3.931  15.13  0.0066 ** 
+s(mode_back)  2.339  2.754  38.18  <2e-16 ***
+s(back_err)   2.165  2.742  52.55  <2e-16 ***
+s(docId)     36.132 54.000 188.84  <2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+R-sq.(adj) =  0.0104   Deviance explained = 6.29%
+fREML =  34295  Scale est. = 1         n = 34516
+
+$place_backerr_int
+
+Family: binomial 
+Link function: logit 
+
+Formula:
+has_bc_onset ~ s(place, k = 8) + s(back_err, k = 8) + ti(place, 
+    back_err, k = c(6, 6)) + s(docId, bs = "re")
+
+Parametric coefficients:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)   -5.040      0.699   -7.21 5.58e-13 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Approximate significance of smooth terms:
+                      edf Ref.df  Chi.sq p-value    
+s(place)            1.000  1.000   0.055 0.81467    
+s(back_err)         2.099  2.550   7.151 0.05661 .  
+ti(place,back_err)  5.250  6.874  20.243 0.00458 ** 
+s(docId)           36.033 54.000 186.416 < 2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+R-sq.(adj) =  0.00906   Deviance explained = 5.83%
+fREML =  34304  Scale est. = 1         n = 34516
+
+$place_modeback_backerr_int
+
+Family: binomial 
+Link function: logit 
+
+Formula:
+has_bc_onset ~ s(place, k = 8) + s(mode_back, k = 5) + s(back_err, 
+    k = 8) + ti(place, mode_back, k = c(6, 5)) + ti(place, back_err, 
+    k = c(6, 6)) + s(docId, bs = "re")
+
+Parametric coefficients:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)  -7.1451     0.8065   -8.86   <2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Approximate significance of smooth terms:
+                       edf Ref.df  Chi.sq  p-value    
+s(place)             1.000  1.000   7.966  0.00477 ** 
+s(mode_back)         1.000  1.000  19.330 1.06e-05 ***
+s(back_err)          2.087  2.536  12.686  0.00382 ** 
+ti(mode_back,place)  2.679  3.058  14.525  0.00237 ** 
+ti(place,back_err)   5.567  7.212  30.703 8.86e-05 ***
+s(docId)            36.079 54.000 187.111  < 2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+R-sq.(adj) =  0.0121   Deviance explained = 6.89%
+fREML =  34279  Scale est. = 1         n = 34516
+
