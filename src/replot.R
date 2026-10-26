@@ -16,7 +16,7 @@ sbc$length_minus_1 <- sbc$unitWordLen - 1
 
 set.seed(1)
 
-words_to_run <- c("there")
+words_to_run <- c("had")
 
 output_dir <- "plots/word_distributions"
 if (!dir.exists(output_dir)) {
@@ -26,12 +26,19 @@ if (!dir.exists(output_dir)) {
 error_words <- c()
 
 save_svg <- function(plot, filename) {
+  plot <- plot + theme(
+    plot.title = element_text(size = 20, colour = "black"),
+    axis.title = element_text(size = 18, colour = "black"),
+    axis.text = element_text(size = 14, colour = "black"),
+    strip.text = element_text(size = 15, colour = "black")
+  )
+
   ggsave(
     filename = filename,
     plot = plot,
     device = svglite::svglite,
-    width = 12,
-    height = 8,
+    width = 6,
+    height = 6,
     units = "in"
   )
   cat("Saved:", filename, "\n")
@@ -75,7 +82,11 @@ for (i in words_to_run) {
   output_gen <- df_visual(word_final_gen, word)
   all_df_gen <- output_gen$all_df
   result_gen <- output_gen$result
-  plot_gen <- plotting(all_df_gen, result_gen, i)
+  plot_gen <- new_plotting(all_df_gen, result_gen, i) +
+    scale_x_continuous(breaks = function(limits) {
+      ticks <- pretty(limits)
+      sort(unique(c(1, ticks[ticks != 0])))
+    })
 
   word_folder <- file.path(output_dir, i)
   if (!dir.exists(word_folder)) {
@@ -126,7 +137,11 @@ for (i in words_to_run) {
     output_hur <- df_visual(word_final_hur, word)
     all_df_hur <- output_hur$all_df
     result_hur <- output_hur$result
-    plot_hur <- plotting(all_df_hur, result_hur, i)
+    plot_hur <- new_plotting(all_df_hur, result_hur, i) +
+      scale_x_continuous(breaks = function(limits) {
+        ticks <- pretty(limits)
+        sort(unique(c(1, ticks[ticks != 0])))
+      })
 
     save_svg(
       plot_hur,
@@ -164,7 +179,11 @@ for (i in words_to_run) {
     output_hur <- df_visual(word_final_hur, word)
     all_df_hur <- output_hur$all_df
     result_hur <- output_hur$result
-    plot_hur <- plotting(all_df_hur, result_hur, i)
+    plot_hur <- new_plotting(all_df_hur, result_hur, i) +
+      scale_x_continuous(breaks = function(limits) {
+        ticks <- pretty(limits)
+        sort(unique(c(1, ticks[ticks != 0])))
+      })
 
     save_svg(
       plot_hur,
