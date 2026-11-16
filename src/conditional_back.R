@@ -101,3 +101,66 @@ write.csv(
   file.path(project_path, "data", "conditional_back_summary.csv"),
   row.names = FALSE
 )
+
+# POS version: average the conditional PMFs first, then calculate summaries.
+library(tidyverse)
+
+pos_files <- list.files(file.path(project_path, "data", "new_spacy_parses"),
+                        pattern = "\\.csv$", full.names = TRUE)
+spacy_pos <- map_dfr(pos_files, function(file) {
+  read_csv(file, col_types = cols_only(
+    text = col_character(), POS_Spacy = col_character(),
+    POS_Spacy_new = col_character(), dep = col_character()
+  ))
+})
+
+word_pos <- spacy_pos %>%
+  mutate(
+    text = tolower(text),
+    token_pos = coalesce(POS_Spacy_new, POS_Spacy),
+    POS = case_when(
+      token_pos == "PRON" & dep %in% c("nsubj", "nsubjpass") ~ "PRON_subject",
+      token_pos == "PRON" & dep %in% c("dobj", "pobj", "dative") ~ "PRON_object",
+      token_pos == "PRON" & dep == "poss" ~ "PRON_possessive",
+      token_pos == "PRON" ~ "PRON_other",
+      TRUE ~ POS_Spacy
+    )
+  ) %>%
+  filter(!is.na(text), !is.na(POS)) %>%
+  count(text, POS, name = "pos_count") %>%
+  group_by(text) %>%
+  slice_max(pos_count, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(word = text, POS)
+
+# Read the existing word-level PMFs; no need to regenerate them for this block.
+conditional_back_pmf <- read.csv(
+  file.path(project_path, "data", "conditional_back_pmf.csv")
+)
+
+conditional_back_pos_pmf <- conditional_back_pmf %>%
+  mutate(word = tolower(word)) %>%
+  inner_join(word_pos, by = "word") %>%
+  group_by(POS, place, back) %>%
+  summarise(probability = mean(probability), .groups = "drop") %>%
+  arrange(POS, place, back)
+
+conditional_back_pos_summary <- conditional_back_pos_pmf %>%
+  group_by(POS, place) %>%
+  summarise(
+    mean_back = sum(back * probability),
+    median_back = back[which(cumsum(probability) >= 0.5)[1]],
+    mode_back = back[which.max(probability)],
+    .groups = "drop"
+  )
+
+write.csv(
+  conditional_back_pos_pmf,
+  file.path(project_path, "data", "conditional_back_pos_pmf.csv"),
+  row.names = FALSE
+)
+write.csv(
+  conditional_back_pos_summary,
+  file.path(project_path, "data", "conditional_back_pos_summary.csv"),
+  row.names = FALSE
+)

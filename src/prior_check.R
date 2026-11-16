@@ -4,6 +4,7 @@
 
 # Load necessary libraries
 library(MASS)  
+library(tidyverse)
 
 n <- 2000
 
@@ -199,23 +200,43 @@ random_select_groups <- function(all_df, num_groups = 1) {
 
 
 ### plotting 
+prior_plot_theme <- theme_bw(base_size = 15) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = 22, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 20, colour = "black"),
+    axis.text = element_text(size = 16, colour = "black"),
+    strip.text = element_text(size = 17, colour = "black")
+  )
+
 plotting_prior <- function(selected_df) {
+  selected_df <- selected_df %>%
+    mutate(nb_length = factor(nb_length, levels = 0:29))
   labels_map <- selected_df %>% 
-    group_by(nb_length) %>% 
+    group_by(nb_length) %>%
     reframe(n.y = unique(n.y)) %>%
+    mutate(nb_length = as.character(nb_length)) %>%
     deframe()  
   
   custom_labeller <- function(nb_length) {
-    sapply(nb_length, function(x) paste(x, "size:", labels_map[x]))
+    paste0(nb_length, " (n = ", replace_na(unname(labels_map[nb_length]), 0), ")")
   }
   
   p <- ggplot(data = selected_df, aes(x = nb_place, y = n.x/n.y)) +
     geom_point(alpha = 1)
   
-  p <- p + facet_wrap("nb_length", labeller = as_labeller(custom_labeller)) + 
-    theme(plot.title = element_text(hjust = 0.5)) + 
-    xlab("place") +  
-    ylab("Count Proportion")   
+  p <- p + facet_wrap(~ nb_length, ncol = 5, drop = FALSE,
+                      labeller = as_labeller(custom_labeller)) +
+    scale_x_continuous(breaks = c(0, 10, 20, 29)) +
+    scale_y_continuous(breaks = c(0, 0.5, 1)) +
+    coord_cartesian(xlim = c(0, 29), ylim = c(0, 1)) +
+    labs(x = "Position (zero-based)", y = "Proportion") +
+    prior_plot_theme +
+    theme(
+      plot.title = element_text(size = 25),
+      axis.title = element_text(size = 24),
+      axis.text = element_text(size = 17)
+    )
   
   return(p)
 }
@@ -253,39 +274,52 @@ for (i in 1:30) {
 final_prior_statistics <- bind_rows(prior_statistics_list)
 
 
-#two graphs of kde to represnet the distribution of length
-#one graph for the word, and one for the draws
-
-# find what is common in the real one but not the fake one
-
-p <- ggplot(
-  all_df %>% filter(iteration <= 10),
-  aes(x = nb_length, col = as.factor(iteration))
-) +
-  geom_density() +
-  labs(x = "UnitLength")
-
-print(p)
-
-
+# ---- Appendix B plots and SVG export ----
 load("data/sbc.Rdata")
-
-sbc %>% filter(sbc$text_lower %in% sbc_top200)
 sbc$place_minus_1 = sbc$place - 1
 sbc$length_minus_1 = sbc$unitWordLen - 1
 
+real_tokens <- sbc %>%
+  filter(text_lower %in% sbc_top200, between(length_minus_1, 0, 29))
+sim_lengths <- quantities %>%
+  slice_head(n = 10000) %>%
+  mutate(iteration = rep(1:10, each = 1000))
 
-p_real <- ggplot(
-  sbc %>% filter(sbc$text_lower %in% sbc_top200),
-  aes(x = length_minus_1, col = as.factor(text_lower))
-) +
-  geom_density() +
-  theme(legend.position = "none") +
+length_kde <- function(data, length, group, title) {
+  ggplot(data, aes(x = {{ length }}, colour = factor({{ group }}))) +
+    geom_density() +
+    labs(title = title, x = "IU length minus one", y = "Density") +
+    prior_plot_theme
+}
+
+p_real <- length_kde(real_tokens, length_minus_1, text_lower, "Empirical IU lengths") +
   scale_x_continuous(limits = c(0, 10)) +
-  scale_y_continuous(limits = c(0, 10)) +
-  labs(x = "UnitLength")
+  scale_y_continuous(limits = c(0, 10))
+p <- length_kde(sim_lengths, nb_length, iteration, "Prior predictive IU lengths")
 
-print(p_real)
+real_place_counts <- real_tokens %>%
+  filter(!is.na(place_minus_1)) %>%
+  count(nb_length = length_minus_1, nb_place = place_minus_1, name = "n.x") %>%
+  group_by(nb_length) %>%
+  mutate(n.y = sum(n.x)) %>%
+  ungroup()
+
+p_real_place <- plotting_prior(real_place_counts) +
+  labs(title = "Empirical word positions by IU length")
+p_prior_place <- plotting_prior(all_df %>% filter(iteration == 1)) +
+  labs(title = "Prior predictive word positions by IU length")
+
+output_dir <- "vis/Prior_predictive"
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+ggsave(file.path(output_dir, "length_empirical.svg"), p_real,
+       device = svglite::svglite, width = 6, height = 6, units = "in")
+ggsave(file.path(output_dir, "length_prior_predictive.svg"), p,
+       device = svglite::svglite, width = 6, height = 6, units = "in")
+ggsave(file.path(output_dir, "place_empirical.svg"), p_real_place,
+       device = svglite::svglite, width = 8, height = 8, units = "in")
+ggsave(file.path(output_dir, "place_prior_predictive.svg"), p_prior_place,
+       device = svglite::svglite, width = 8, height = 8, units = "in")
 
 
 sbc$length_minus_1
