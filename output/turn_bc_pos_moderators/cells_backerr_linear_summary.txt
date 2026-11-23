@@ -1,0 +1,43 @@
+
+Family: binomial 
+Link function: logit 
+
+Formula:
+onset ~ cell + cell:mode_back_pos + cell:modeback_diff + cell:back_err + 
+    s(place, by = cell, k = k_default) + s(docId, by = kind, 
+    bs = "re")
+
+Parametric coefficients:
+                                   Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                        -2.90931    0.30396  -9.571  < 2e-16 ***
+cellturn_terminal                   0.74475    0.36989   2.013 0.044070 *  
+cellbc_nonterminal                 -0.64948    0.43615  -1.489 0.136454    
+cellturn_nonterminal               -0.92204    0.49197  -1.874 0.060906 .  
+cellbc_terminal:mode_back_pos      -0.42443    0.07287  -5.825 5.71e-09 ***
+cellturn_terminal:mode_back_pos    -0.54575    0.03552 -15.366  < 2e-16 ***
+cellbc_nonterminal:mode_back_pos   -0.35320    0.06479  -5.451 5.01e-08 ***
+cellturn_nonterminal:mode_back_pos -0.46727    0.03762 -12.420  < 2e-16 ***
+cellbc_terminal:modeback_diff      -0.28242    0.06201  -4.554 5.25e-06 ***
+cellturn_terminal:modeback_diff    -0.37324    0.03146 -11.865  < 2e-16 ***
+cellbc_nonterminal:modeback_diff   -0.18209    0.05279  -3.449 0.000562 ***
+cellturn_nonterminal:modeback_diff -0.30824    0.03152  -9.779  < 2e-16 ***
+cellbc_terminal:back_err           -0.16880    0.02782  -6.069 1.29e-09 ***
+cellturn_terminal:back_err         -0.26826    0.01593 -16.844  < 2e-16 ***
+cellbc_nonterminal:back_err        -0.16131    0.02858  -5.643 1.67e-08 ***
+cellturn_nonterminal:back_err      -0.24219    0.01911 -12.675  < 2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Approximate significance of smooth terms:
+                                 edf Ref.df Chi.sq  p-value    
+s(place):cellbc_terminal       3.476  3.961  48.15  < 2e-16 ***
+s(place):cellturn_terminal     3.756  4.191 213.78  < 2e-16 ***
+s(place):cellbc_nonterminal    2.743  3.265  27.46 8.96e-06 ***
+s(place):cellturn_nonterminal  2.444  2.870 150.92  < 2e-16 ***
+s(docId):kindbc               36.159 55.000 207.47  < 2e-16 ***
+s(docId):kindturn             51.384 58.000 631.06  < 2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+R-sq.(adj) =  0.0308   Deviance explained = 9.65%
+fREML = 1.2044e+05  Scale est. = 1         n = 116810

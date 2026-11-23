@@ -27,7 +27,6 @@ posterior_df <- read_csv(here("data/posterior_param_simple.csv"))
 
 Code for producing staircases:
 ```{r}
-setwd("~/Desktop/Projects/RStan_prosodic")
 get_avg_starfish <- function(words, node_id) {
   counts <- sbc %>%
     filter(text %in% words) %>%
@@ -66,7 +65,7 @@ for (i in seq_along(mapper$points_in_vertex)) {
   if (!is.null(p)) {
     plots[[i]] <- p
     ggsave(
-      filename = sprintf("output/mapper_staircase/node_%02d_avg.png", i),
+      filename = here("output", "mapper_staircase", sprintf("node_%02d_avg.png", i)),
       plot = p,
       width = 6, height = 5, dpi = 300
     )
@@ -83,13 +82,12 @@ reversed <- posterior_df %>%
 
 ```
 ```{r}
-setwd("~/Desktop/Projects/RStan_prosodic")
 node_word_table <- tibble(
   node_id = seq_along(mapper$points_in_vertex),
   words = map_chr(mapper$points_in_vertex, ~ paste(posterior_df$word[.x + 1], collapse = ", "))
 )
 
-write_csv(node_word_table, "output/mapper_staircase/node_words.csv")
+write_csv(node_word_table, here("output", "mapper_staircase", "node_words.csv"))
 
 
 node_param_df <- node_word_map %>%

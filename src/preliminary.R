@@ -5,8 +5,8 @@
 library(rstan)
 library(loo)
 
-project_path <- "/Users/lu/Desktop/Projects/RStan_prosodic"
-load(file.path(project_path, "data", "sbc.Rdata"))
+library(here)
+load(here("data", "sbc.Rdata"))
 
 
 trial_words <- c("and", "with", "because")
@@ -23,7 +23,7 @@ model_files <- c(
 
 
 models <- lapply(model_files, function(filename) {
-  stan_model(file = file.path(project_path, "src", "stan", filename))
+  stan_model(file = here("src", "stan", filename))
 })
 
 fits <- list()

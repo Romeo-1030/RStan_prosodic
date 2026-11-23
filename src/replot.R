@@ -5,12 +5,13 @@ library(HMMpa)
 library(boot)
 library(loo)
 library(svglite)
+library(here)
 
-source("src/functions.R")
+source(here("src", "functions.R"))
 
 options(buildtools.check = function(action) TRUE)
 
-load("data/sbc.Rdata")
+load(here("data", "sbc.Rdata"))
 sbc$place_minus_1 <- sbc$place - 1
 sbc$length_minus_1 <- sbc$unitWordLen - 1
 
@@ -18,7 +19,7 @@ set.seed(1)
 
 words_to_run <- c("had")
 
-output_dir <- "plots/word_distributions"
+output_dir <- here("plots", "word_distributions")
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
@@ -65,7 +66,7 @@ for (i in words_to_run) {
   cat("back =", cri, "\n")
 
   # Generalized Poisson model
-  gen_model <- getModel(i, "src/stan/gen_pois.stan", back = cri)
+  gen_model <- getModel(i, here("src", "stan", "gen_pois.stan"), back = cri)
 
   word_final_gen <- tryCatch({
     Gen_Pois_Quantities(gen_model, word, back = cri)
@@ -107,7 +108,7 @@ for (i in words_to_run) {
 
   if (hurdle_place == "0" | hurdle_place == "-1") {
     if ((hurdle_place == "0" & cri == FALSE) | (hurdle_place == "-1" & cri == TRUE)) {
-      hurdle_model <- getModel(i, "src/stan/gen_pois_hurdle.stan", back = cri)
+      hurdle_model <- getModel(i, here("src", "stan", "gen_pois_hurdle.stan"), back = cri)
       word_final_hur <- process_word_hurdle(
         word,
         hurdle_model,
@@ -118,7 +119,7 @@ for (i in words_to_run) {
         0
       )
     } else if ((hurdle_place == "0" & cri == TRUE) | (hurdle_place == "-1" & cri == FALSE)) {
-      hurdle_model <- getModel(i, "src/stan/gen_pois_hurdle_rev.stan", back = cri)
+      hurdle_model <- getModel(i, here("src", "stan", "gen_pois_hurdle_rev.stan"), back = cri)
       word_final_hur <- process_word_hurdle(
         word,
         hurdle_model,
@@ -149,7 +150,7 @@ for (i in words_to_run) {
     )
   } else if (hurdle_place == "1" | hurdle_place == "-2") {
     if ((hurdle_place == "1" & cri == FALSE) | (hurdle_place == "-2" & cri == TRUE)) {
-      hurdle_model <- getModel(i, "src/stan/gen_pois_hurdle2.stan", back = cri)
+      hurdle_model <- getModel(i, here("src", "stan", "gen_pois_hurdle2.stan"), back = cri)
       word_final_hur <- process_word_hurdle(
         word,
         hurdle_model,
@@ -160,7 +161,7 @@ for (i in words_to_run) {
         1
       )
     } else if ((hurdle_place == "1" & cri == TRUE) | (hurdle_place == "-2" & cri == FALSE)) {
-      hurdle_model <- getModel(i, "src/stan/gen_pois_hurdle2_rev.stan", back = cri)
+      hurdle_model <- getModel(i, here("src", "stan", "gen_pois_hurdle2_rev.stan"), back = cri)
       word_final_hur <- process_word_hurdle(
         word,
         hurdle_model,

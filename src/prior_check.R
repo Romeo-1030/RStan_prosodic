@@ -5,6 +5,7 @@
 # Load necessary libraries
 library(MASS)  
 library(tidyverse)
+library(here)
 
 n <- 2000
 
@@ -275,7 +276,7 @@ final_prior_statistics <- bind_rows(prior_statistics_list)
 
 
 # ---- Appendix B plots and SVG export ----
-load("data/sbc.Rdata")
+load(here("data", "sbc.Rdata"))
 sbc$place_minus_1 = sbc$place - 1
 sbc$length_minus_1 = sbc$unitWordLen - 1
 
@@ -309,7 +310,7 @@ p_real_place <- plotting_prior(real_place_counts) +
 p_prior_place <- plotting_prior(all_df %>% filter(iteration == 1)) +
   labs(title = "Prior predictive word positions by IU length")
 
-output_dir <- "vis/Prior_predictive"
+output_dir <- here("vis", "Prior_predictive")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 ggsave(file.path(output_dir, "length_empirical.svg"), p_real,

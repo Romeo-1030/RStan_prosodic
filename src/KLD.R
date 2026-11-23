@@ -6,9 +6,9 @@ library(ggplot2)
 library(dplyr)
 library(philentropy)
 
-project_path <- "/Users/lu/Desktop/Projects/RStan_prosodic"
-parameters <- read.csv(file.path(project_path, "data", "posterior_param_simple.csv"))
-load(file.path(project_path, "data", "sbc.Rdata"))
+library(here)
+parameters <- read.csv(here("data", "posterior_param_simple.csv"))
+load(here("data", "sbc.Rdata"))
 
 sbc$place_minus_1 <- sbc$place - 1
 sbc$length_minus_1 <- sbc$unitWordLen - 1
@@ -26,7 +26,7 @@ pmf_env$dnbinom <- stats::dnbinom
 pmf_env$plogis <- stats::plogis
 pmf_env$inv.logit <- stats::plogis
 
-mapper_code <- parse(file.path(project_path, "src", "mapper_pre.R"))
+mapper_code <- parse(here("src", "mapper_pre.R"))
 for (code in mapper_code) {
   if (is.call(code) && identical(code[[1]], as.name("<-")) &&
       is.symbol(code[[2]]) && as.character(code[[2]]) %in% pmf_names) {

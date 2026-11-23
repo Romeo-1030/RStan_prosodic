@@ -173,13 +173,13 @@ print(words_in_node)
 subset_rows <- posterior_param_simple[posterior_param_simple$word %in% words_in_node, ]
 View(subset_rows) 
 
-posterior_param_simple <- read.csv("data/posterior_param_simple.csv")
+posterior_param_simple <- read.csv(here("data", "posterior_param_simple.csv"))
 
 seeds <- c(642, 647, 672, 604, 645, 614, 680, 681, 657, 629)
 cluster_result_list <- list()
 
 for (seed in seeds) {
-  path <- paste0("data/cluster_result/seed", seed, "/mapper_result_seed", seed, "_int3_ov0_4.json")
+  path <- here(paste0("data/cluster_result/seed", seed, "/mapper_result_seed", seed, "_int3_ov0_4.json"))
   seed_mapper_result <- fromJSON(path)
   
   for (vertex_id in seq_along(seed_mapper_result$points_in_vertex)) {
@@ -202,7 +202,7 @@ all_cluster_df_wide <- pivot_wider(all_cluster_df_long,
                                    names_from = seed,
                                    values_from = words)
 
-write.csv(all_cluster_df_wide, "data/clusters__int3_ov0_4.csv", row.names = FALSE)
+write.csv(all_cluster_df_wide, here("data", "clusters__int3_ov0_4.csv"), row.names = FALSE)
 
 sapply(points_in_vertex,
   \(x) posterior_param_simple$word[x + 1] %>% paste(collapse = ",")
@@ -361,7 +361,7 @@ target_pos_list <- word_pos_majority %>%
   unique() %>%
   sort()
 
-pos_output_dir <- "/Users/lu/Desktop/Projects/RStan_prosodic/vis/Mapper_POS"
+pos_output_dir <- here("vis", "Mapper_POS")
 dir.create(pos_output_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Average the saved posterior mean parameters within each node.
@@ -455,7 +455,7 @@ node_words_parameters <- node_words_parameters %>%
   left_join(node_predictions, by = "node")
 
 write.csv(node_words_parameters,
-          "/Users/lu/Downloads/node_words_parameters.csv", row.names = FALSE)
+          here("output", "node_words_parameters.csv"), row.names = FALSE)
 
 for (target_pos in target_pos_list) {
   pos_plot <- plot_mapper_colored_pos_gg(

@@ -1,7 +1,11 @@
 # Overlap explorer: browse overlap onsets (and a matched random sample of
 # no-overlap words) with the contributions each model term makes to the
-# predicted onset probability.
-# Needs output/overlap_explorer/explorer_data.rds from prep.R in this folder.
+# predicted onset probability, for models fitted to both onset types at once:
+# the best of the grid in turn_bc_pos_moderators.qmd by AIC, and the old
+# place * mode_back models, with and without back error, with no moderators
+# (fitted in prep.R).
+# Needs output/overlap_explorer/explorer_data.rds from prep.R in this folder,
+# and the fitted models in output/turn_bc_pos_moderators_models/.
 #   shiny::runApp(here::here("nb", "turn_bc", "overlap_explorer"))
 
 library(here)
@@ -10,6 +14,7 @@ library(bslib)
 library(dplyr)
 library(stringr)
 library(ggplot2)
+library(mgcv)
 
 data_path <- here("output", "overlap_explorer", "explorer_data.rds")
 if (!file.exists(data_path)) {
@@ -19,12 +24,12 @@ explorer_data <- readRDS(data_path)
 words <- explorer_data$words
 units <- explorer_data$units
 models <- explorer_data$models
+model_dir <- here("output", explorer_data$model_dir)
 tokens_by_doc <- split(explorer_data$tokens, explorer_data$tokens$docId)
 units_by_doc <- split(units, units$docId)
 
 kind_labels <- c(bc = "Backchannel onset", turn = "Turn onset")
 outcome_labels <- c(
-  any = "Any overlap (word has a bracket)",
   bc = "Backchannel onset",
   turn = "Turn onset"
 )
@@ -38,69 +43,82 @@ col_overlap <- "#eb6834"
 
 # Models -------------------------------------------------------------------
 
-model_choices <- function(kind) {
-  keep <- Filter(\(m) m$outcome %in% c(kind, "any"), models)
-  labels <- vapply(
-    keep,
-    \(m) sprintf("%s   (%s)", m$label, str_remove(m$name, "^model_")),
-    ""
-  )
-  groups <- vapply(keep, \(m) outcome_labels[[m$outcome]], "")
-  lapply(split(names(keep), groups), \(nm) setNames(nm, labels[nm]))
-}
-
-# Same model for the other kind of onset, where there is one
-counterpart <- function(name, kind) {
-  other <- setdiff(names(kind_labels), kind)
-  swapped <- str_replace_all(
-    name,
-    c(
-      setNames(paste0("_", kind, "_"), paste0("_", other, "_")),
-      setNames(paste0("_", kind), paste0("_", other, "$"))
-    )
-  )
-  if (swapped %in% names(models)) swapped else name
-}
-
-pool_rows <- function(spec) {
-  keep <- switch(
-    spec$base,
-    noninit = rep(TRUE, nrow(words)),
-    back = words$in_back,
-    nonterm = words$in_nonterm,
-    notboth = words$in_notboth
-  )
-  keep & switch(
-    spec$outcome,
-    any = TRUE,
-    bc = words$turn_has_bc_onset,
-    turn = words$turn_has_turn_onset
-  )
-}
-
-design_matrix <- function(spec, df) {
-  mf <- model.frame(spec$rhs, df, na.action = na.pass)
-  model.matrix(spec$rhs, mf)[, names(spec$beta), drop = FALSE]
-}
-
-# Long table of per-term contributions to the linear predictor. Centred: each
-# term is beta * (x - pool mean), and the intercept becomes the pool-average
-# baseline, so the bars show how this word differs from a typical one.
-contributions <- function(spec, df, pool_means, centred) {
-  X <- design_matrix(spec, df)
-  if (centred) {
-    slopes <- setdiff(colnames(X), "(Intercept)")
-    X[, slopes] <- sweep(X[, slopes, drop = FALSE], 2, pool_means[slopes])
+# Rank among the grid models by AIC (where it would be, if not one of them)
+rank_text <- function(m) {
+  n <- explorer_data$n_grid
+  where <- if (m$rank > n) {
+    sprintf("below all %d grid models", n)
+  } else {
+    sprintf("%s %d of %d in the grid", if (m$in_grid) "rank" else "would rank", m$rank, n)
   }
-  C <- sweep(X, 2, spec$beta, `*`)
-  if (centred) {
-    C[, "(Intercept)"] <- sum(spec$beta * pool_means)
+  sprintf("%s, ΔAIC %.1f", where, m$d_aic)
+}
+
+model_choices <- setNames(
+  names(models),
+  vapply(models, \(m) sprintf("%s   (%s)", m$label, rank_text(m)), "")
+)
+
+# The words of turns with an onset of this kind: that kind's half of the
+# stacked data the models were fitted to
+pool_rows <- function(kind) {
+  words$in_model & words[[paste0("turn_has_", kind, "_onset")]]
+}
+
+# Fitted models are loaded from model_dir the first time they are chosen
+model_cache <- new.env()
+get_model <- function(name) {
+  if (is.null(model_cache[[name]])) {
+    model_cache[[name]] <- readRDS(file.path(model_dir, paste0(name, ".rds")))
   }
-  re <- unname(spec$re[df$docId])
-  C <- cbind(C, docId = coalesce(re, 0))
+  model_cache[[name]]
+}
+
+# Per-term contributions to the linear predictor (predict(type = "terms")) for
+# the rows of df as words of the `kind` half: the fixed terms and the document
+# effect. The model's by = cell / kind terms have one column per level, only
+# one of them non-zero for a row, so they are summed into one term each (see
+# term_group in prep.R).
+term_matrix <- function(spec, df, kind) {
+  model <- get_model(spec$name)
+  nd <- as.data.frame(df) # discrete bam predictions can fail on tibbles
+  # Only models with by = kind / cell terms have these factors
+  nd$kind <- factor(kind, levels = c("bc", "turn"))
+  nd$cell <- factor(
+    paste(kind, nd$iu, sep = "_"),
+    levels = c("bc_terminal", "turn_terminal", "bc_nonterminal", "turn_nonterminal")
+  )
+  nd$docId <- factor(nd$docId, levels = levels(model$model$docId))
+  tm <- predict(model, nd, type = "terms")
+  tm <- t(rowsum(t(tm), spec$term_group[colnames(tm)], reorder = FALSE))
+  means <- spec$by_kind[[kind]]$term_means
+  list(
+    wid = df$wid,
+    fixed = tm[, names(means), drop = FALSE],
+    doc = unname(tm[, "s(docId)"]),
+    constant = spec$constant,
+    means = means
+  )
+}
+
+# Long table of per-term contributions to the linear predictor, for the rows of
+# df (looked up in tt, from term_matrix()). Centred: each term minus its mean
+# over the model's data for this onset type, with the means added to the
+# constant as the pool-average baseline, so the bars show how this word
+# differs from a typical one. Uncentred: the terms as mgcv returns them, and
+# the constant.
+contributions <- function(df, tt, centred) {
+  i <- match(df$wid, tt$wid)
+  C <- tt$fixed[i, , drop = FALSE]
+  base <- tt$constant
+  if (centred) {
+    C <- sweep(C, 2, tt$means)
+    base <- base + sum(tt$means)
+  }
+  C <- cbind(base, C, tt$doc[i])
   term_names <- c(
     if (centred) "Baseline (pool mean)" else "Intercept",
-    colnames(C)[-c(1, ncol(C))],
+    colnames(tt$fixed),
     "Document (random)"
   )
   colnames(C) <- term_names
@@ -272,6 +290,9 @@ css <- "
 .tok-target { font-weight: 700; outline: 2px solid #0b0b0b; outline-offset: 1px; border-radius: 3px; }
 .legend-note { font-size: 12px; color: #52514e; }
 .legend-note span { margin-right: 12px; }
+/* Let the dropdowns open over the transcript card below instead of being clipped */
+.controls-card, .controls-card .card-body { overflow: visible !important; }
+.controls-card { position: relative; z-index: 10; }
 "
 
 js <- "
@@ -334,6 +355,7 @@ ui <- page_sidebar(
     uiOutput("example_list")
   ),
   card(
+    class = "controls-card",
     card_body(
       layout_columns(
         col_widths = c(3, 9),
@@ -343,13 +365,7 @@ ui <- page_sidebar(
           c("Backchannel" = "bc", "Turn" = "turn"),
           inline = TRUE
         ),
-        selectInput(
-          "model",
-          "Model",
-          model_choices("bc"),
-          selected = "model_bc_place_modeback_backerr",
-          width = "100%"
-        )
+        selectInput("model", "Model", model_choices, width = "100%")
       ),
       layout_columns(
         col_widths = c(4, 5, 3),
@@ -415,31 +431,17 @@ ui <- page_sidebar(
   card(
     card_header("Model"),
     uiOutput("model_info"),
-    tableOutput("coef_table")
+    tableOutput("coef_table"),
+    tableOutput("smooth_table")
   )
 )
 
 # Server -------------------------------------------------------------------
 
 server <- function(input, output, session) {
-  observeEvent(input$kind, ignoreInit = TRUE, {
-    updateSelectInput(
-      session,
-      "model",
-      choices = model_choices(input$kind),
-      selected = counterpart(input$model, input$kind)
-    )
-  })
+  spec <- reactive(models[[req(input$model)]])
 
-  spec <- reactive({
-    m <- models[[req(input$model)]]
-    req(m$outcome %in% c(input$kind, "any"))
-    m
-  })
-
-  pool <- reactive(words[pool_rows(spec()), ])
-
-  pool_means <- reactive(colMeans(design_matrix(spec(), pool())))
+  pool <- reactive(words[pool_rows(input$kind), ])
 
   # Onsets of the chosen kind in the model's data, plus as many randomly drawn
   # words that have no overlap at all
@@ -458,12 +460,15 @@ server <- function(input, output, session) {
         by = c("docId", "match_unitId")
       ) %>%
       mutate(mb_bin = if_else(mode_back >= 5, "5+", as.character(mode_back)))
-    X <- design_matrix(spec(), ex)
-    re <- coalesce(unname(spec()$re[ex$docId]), 0)
-    ex$eta <- drop(X %*% spec()$beta) + re
+    tt <- term_matrix(spec(), ex, input$kind)
+    ex$eta <- tt$constant + rowSums(tt$fixed) + tt$doc
     ex$p <- plogis(ex$eta)
+    attr(ex, "terms") <- tt
     ex
   })
+
+  # Term contributions for every example (see term_matrix())
+  ex_terms <- reactive(attr(examples(), "terms"))
 
   observe({
     ex <- examples()
@@ -615,10 +620,17 @@ server <- function(input, output, session) {
           class = paste("badge", if (ex$overlap) "text-bg-warning" else "text-bg-secondary"),
           if (ex$overlap) kind_labels[[input$kind]] else "No overlap"
         ),
+        span(class = "badge text-bg-light", sprintf("%s IU", ex$iu)),
         span(class = "badge text-bg-light", sprintf("place %d", ex$place)),
-        span(class = "badge text-bg-light", sprintf("modal back %d", ex$mode_back)),
+        span(
+          class = "badge text-bg-light",
+          sprintf("%s, POS modal back %d", ex$pos_class, ex$mode_back_pos)
+        ),
+        span(
+          class = "badge text-bg-light",
+          sprintf("modal back %d (word − POS %+d)", ex$mode_back, ex$modeback_diff)
+        ),
         span(class = "badge text-bg-light", sprintf("back %s", ex$back)),
-        span(class = "badge text-bg-light", sprintf("back error %+d", ex$back_err)),
         span(class = "badge text-bg-light", sprintf("η = %.2f, P = %.3f", ex$eta, ex$p))
       )
     )
@@ -630,7 +642,7 @@ server <- function(input, output, session) {
 
   output$contrib_plot <- renderPlot({
     ex <- current()
-    df <- contributions(spec(), ex, pool_means(), input$centred) %>%
+    df <- contributions(ex, ex_terms(), input$centred) %>%
       mutate(
         fill = case_when(
           str_detect(term, "^Baseline|^Intercept") ~ "Baseline",
@@ -664,7 +676,7 @@ server <- function(input, output, session) {
   output$summary_plot <- renderPlot({
     s <- shown()
     req(nrow(s) > 0)
-    contrib <- contributions(spec(), s, pool_means(), input$centred)
+    contrib <- contributions(s, ex_terms(), input$centred)
     means <- contrib %>%
       mutate(group = if_else(overlap, "Overlap", "No overlap")) %>%
       group_by(term, group) %>%
@@ -700,34 +712,43 @@ server <- function(input, output, session) {
 
   output$model_info <- renderUI({
     m <- spec()
-    p <- pool()
+    half <- function(kind) {
+      sprintf(
+        "%s: %s words, %s events",
+        outcome_labels[[kind]],
+        format(m$by_kind[[kind]]$nobs, big.mark = ","),
+        format(m$by_kind[[kind]]$n_events, big.mark = ",")
+      )
+    }
     tags$p(
       tags$code(m$formula),
       tags$br(),
       sprintf(
-        "Outcome: %s.  Data: %s, %s words, %s events.  AIC %.1f.",
-        outcome_labels[[m$outcome]],
-        if (m$base == "noninit") "non-initial words" else c(back = "All IUs", nonterm = "Non-terminal IUs", notboth = "Not both complete")[[m$base]],
-        format(m$nobs, big.mark = ","),
-        format(m$n_events, big.mark = ","),
-        m$aic
-      ),
-      if (m$outcome == "any") {
-        tags$span(
-          tags$br(),
-          sprintf(
-            "This model predicts any overlap bracket on the word; the examples are %ss in its data.",
-            tolower(kind_labels[[input$kind]])
-          )
-        )
-      }
+        "One model for both onset types (all places, BC and turn halves stacked). %s; %s.  Conditional AIC %.1f (%s), deviance explained %.1f%%.",
+        half("bc"),
+        half("turn"),
+        m$aic,
+        rank_text(m),
+        100 * m$dev_expl
+      )
     )
   })
 
   output$coef_table <- renderTable(
     {
-      spec()$coefs %>%
-        tibble::rownames_to_column("Term")
+      spec()$p_table %>%
+        tibble::rownames_to_column("Parametric term")
+    },
+    digits = 3,
+    striped = TRUE,
+    spacing = "s"
+  )
+
+  output$smooth_table <- renderTable(
+    {
+      s <- spec()$s_table
+      req(nrow(s) > 0)
+      tibble::rownames_to_column(s, "Smooth")
     },
     digits = 3,
     striped = TRUE,

@@ -1,0 +1,687 @@
+---
+title: "Turn / BC onsets: the word beyond its POS, step by step"
+---
+
+The analyses that came before the model grid in `turn_bc_pos_moderators.qmd`: each fits a few models and tests specific contrasts between onset types (BC / turn) and IU types (terminal / non-terminal). The main analysis and the reported model are in `turn_bc_pos_moderators.qmd`.
+
+In `turn_bc_gam_allplace.qmd` ("POS instead of word"), the word-level mode back adds clearly to the POS-level one for turn onsets, in all IUs and in non-terminal IUs, and for backchannel onsets in all IUs, but much less clearly for backchannel onsets in non-terminal IUs. Those are four separate fits, and "significant in three subsets but not the fourth" is not itself evidence that the fourth is different; the non-terminal BC subset also has the fewest onsets.
+
+This notebook tests the difference directly, in one model over all the data (all places, as in `turn_bc_gam_allplace.qmd`). The word and BC / turn data are stacked, and the two mode back terms get a separate slope for each combination of onset type (BC / turn) and IU type (terminal / non-terminal), so that the slopes can be compared with Wald tests. Two explanations to tell apart:
+
+1. **Onset type.** BCs need only a constituent end, which POS captures; turns need lexical projection (*and* vs *but*, *so* vs *well*), which POS doesn't. Then the word-level effect should be smaller for BC than for turn onsets, in terminal and non-terminal IUs alike.
+2. **IU type.** For BCs, the word-level information is concentrated at the ends of terminal IUs (*yeah*, *right*, *you know*), and dropping terminal IUs removes it. Then the word-level effect for BC onsets should be smaller in non-terminal than in terminal IUs.
+
+Both can hold; if only non-terminal BCs differ, the onset type × IU type interaction will show it.
+
+```{r}
+source(here::here("nb", "turn_bc", "turn_bc_pos_moderators_data.R"))
+```
+
+# Model
+
+A separate intercept, place smooth and pair of mode back slopes in each of the four cells (onset type × IU type), and document intercepts for each onset type. The mode back terms are linear so that each cell's effect is one number with a standard error; the smooth version below checks that this doesn't hide anything. `k = 6` as in `turn_bc_gam_allplace.qmd`.
+
+```{r}
+k_default <- 6 # basis size for the smooths
+
+cells_formula <- onset ~ cell + # an intercept per cell
+  cell:mode_back_pos + # a POS-level mode back slope per cell
+  cell:modeback_diff + # a word minus POS slope per cell
+  s(place, by = cell, k = k_default) + # a place smooth per cell
+  s(docId, by = kind, bs = "re") # document random intercepts per onset type
+
+m_cells <- fit_or_load(
+  "cells_linear",
+  bam(
+    cells_formula,
+    data = stacked,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  ),
+  formula = cells_formula
+)
+
+save_text(summary(m_cells), "cells_linear_summary")
+summary(m_cells)
+```
+
+## Slopes by cell
+
+```{r}
+cell_levels <- levels(stacked$cell) # "bc_terminal", "turn_terminal", ...
+
+# Name of a cell's slope coefficient, e.g. "cellbc_terminal:modeback_diff"
+slope_name <- function(cell, var) sprintf("cell%s:%s", cell, var)
+
+# Each cell's slope of each term, with its standard error and 95% CI
+slopes <- expand_grid(
+  term = c("modeback_diff", "mode_back_pos"),
+  cell = cell_levels
+) %>%
+  mutate(
+    coef = slope_name(cell, term),
+    estimate = coef(m_cells)[coef], # the coefficient
+    se = sqrt(diag(vcov(m_cells))[coef]), # its standard error
+    lo = estimate - 1.96 * se, # 95% CI
+    hi = estimate + 1.96 * se
+  ) %>%
+  separate(cell, c("kind", "iu"), sep = "_", remove = FALSE) %>%
+  select(-coef)
+
+save_table(slopes, "slopes_by_cell")
+
+# Slopes with CIs: one panel per term, colour = onset type
+p <- slopes %>%
+  mutate(
+    term = recode(
+      term,
+      modeback_diff = "Word minus POS (modeback_diff)",
+      mode_back_pos = "POS-level mode back"
+    )
+  ) %>%
+  ggplot(aes(estimate, iu, colour = kind)) +
+  geom_vline(xintercept = 0, colour = "grey60") + # zero slope
+  geom_pointrange(
+    aes(xmin = lo, xmax = hi),
+    position = position_dodge(width = 0.4)
+  ) +
+  facet_wrap(~term) +
+  labs(x = "Slope (log-odds per word)", y = NULL, colour = "Onset")
+save_plot(p, "slopes_by_cell", width = 8, height = 3.5)
+```
+
+## Contrasts
+
+Wald tests of differences between the cells' slopes (from the coefficients and `vcov(m_cells)`):
+
+- **Onset type**: BC minus turn, within terminal and within non-terminal IUs (explanation 1 predicts the word-level slope is closer to 0 for BC in both)
+- **IU type**: non-terminal minus terminal, for BC and for turn (explanation 2 predicts the word-level slope is closer to 0 in non-terminal IUs for BC)
+- **Interaction**: (BC, non-terminal − terminal) − (turn, non-terminal − terminal): whether the IU type difference is specific to BCs
+
+The slopes are negative (more words expected to remain → onset less likely), so "closer to 0" shows up as a positive difference.
+
+```{r}
+# Wald test of a linear combination of a model's coefficients
+wald <- function(model, weights) {
+  b <- coef(model) # all coefficients
+  L <- setNames(rep(0, length(b)), names(b)) # contrast vector, 0 everywhere ...
+  L[names(weights)] <- weights # ... except for the coefficients in the contrast
+  est <- sum(L * b) # the contrast's estimate
+  se <- sqrt(drop(t(L) %*% vcov(model) %*% L)) # its standard error
+  tibble(
+    estimate = est,
+    se = se,
+    lo = est - 1.96 * se, # 95% CI
+    hi = est + 1.96 * se,
+    z = est / se, # Wald z
+    p = 2 * pnorm(-abs(est / se)) # two-sided p-value
+  )
+}
+
+# The five contrasts between cells, for one term
+contrast_weights <- function(var) {
+  s <- \(cell) slope_name(cell, var) # coefficient name of a cell's slope
+  list(
+    # BC slope minus turn slope, in terminal IUs
+    "BC - turn, terminal" = setNames(
+      c(1, -1),
+      c(s("bc_terminal"), s("turn_terminal"))
+    ),
+    # Same, in non-terminal IUs
+    "BC - turn, non-terminal" = setNames(
+      c(1, -1),
+      c(s("bc_nonterminal"), s("turn_nonterminal"))
+    ),
+    # Non-terminal minus terminal, for BC onsets
+    "Non-terminal - terminal, BC" = setNames(
+      c(1, -1),
+      c(s("bc_nonterminal"), s("bc_terminal"))
+    ),
+    # Same, for turn onsets
+    "Non-terminal - terminal, turn" = setNames(
+      c(1, -1),
+      c(s("turn_nonterminal"), s("turn_terminal"))
+    ),
+    # Difference between the two IU-type differences
+    "Interaction (BC vs turn difference in IU effect)" = setNames(
+      c(1, -1, -1, 1),
+      c(
+        s("bc_nonterminal"),
+        s("bc_terminal"),
+        s("turn_nonterminal"),
+        s("turn_terminal")
+      )
+    )
+  )
+}
+
+# All five contrasts for both terms
+contrasts <- lapply(c("modeback_diff", "mode_back_pos"), \(var) {
+  w <- contrast_weights(var)
+  bind_rows(lapply(w, \(x) wald(m_cells, x)), .id = "contrast") %>%
+    mutate(term = var, .before = 1)
+}) %>%
+  bind_rows()
+
+save_table(contrasts, "contrasts")
+contrasts
+```
+
+## Smooth version
+
+The same model with smooths of the two mode back terms in each cell instead of slopes (`mode_back_pos` with `k = 4`, as it takes few values), to check that the linear slopes don't hide a non-linear word-level effect in some cell.
+
+```{r}
+cells_smooth_formula <- onset ~ cell + # an intercept per cell
+  s(place, by = cell, k = k_default) + # a place smooth per cell
+  s(mode_back_pos, by = cell, k = 4) + # a POS-level mode back smooth per cell
+  s(modeback_diff, by = cell, k = k_default) + # a word minus POS smooth per cell
+  s(docId, by = kind, bs = "re") # document random intercepts per onset type
+
+m_cells_smooth <- fit_or_load(
+  "cells_smooth",
+  bam(
+    cells_smooth_formula,
+    data = stacked,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  ),
+  formula = cells_smooth_formula
+)
+
+save_text(summary(m_cells_smooth), "cells_smooth_summary")
+summary(m_cells_smooth)
+
+# Linear vs smooth, by AIC
+tibble(
+  model = c("linear", "smooth"),
+  AIC = c(AIC(m_cells), AIC(m_cells_smooth)),
+  edf = c(sum(m_cells$edf), sum(m_cells_smooth$edf))
+) %>%
+  mutate(dAIC = AIC - min(AIC)) %>%
+  save_table("linear_vs_smooth_aic")
+```
+
+Partial effect of `modeback_diff` in each cell (log-odds, centred, 95% CIs), over the range of the difference in that cell:
+
+```{r}
+# The modeback_diff smooth of each cell, over the cell's range of modeback_diff
+diff_smooths <- lapply(cell_levels, \(cl) {
+  d <- stacked %>% filter(cell == cl) # the cell's data
+  rng <- range(d$modeback_diff)
+  # 100 values of modeback_diff, everything else at the cell's median
+  grid <- tibble(
+    cell = factor(cl, cell_levels),
+    kind = factor(str_remove(cl, "_.*"), levels(stacked$kind)),
+    place = median(d$place),
+    mode_back_pos = median(d$mode_back_pos),
+    modeback_diff = seq(rng[1], rng[2], length.out = 100),
+    docId = stacked$docId[1] # any document (only the smooth term is used)
+  )
+  term <- sprintf("s(modeback_diff):cell%s", cl) # the cell's smooth
+  pr <- predict(
+    m_cells_smooth,
+    grid,
+    type = "terms", # each term's contribution
+    terms = term, # only this smooth
+    se.fit = TRUE
+  )
+  grid %>%
+    mutate(fit = pr$fit[, term], se = pr$se.fit[, term])
+}) %>%
+  bind_rows() %>%
+  separate(cell, c("onset", "iu"), sep = "_", remove = FALSE)
+
+# The smooths with 95% CIs, one panel per cell
+p <- ggplot(diff_smooths, aes(modeback_diff, fit)) +
+  geom_hline(yintercept = 0, colour = "grey60") +
+  geom_ribbon(
+    aes(ymin = fit - 1.96 * se, ymax = fit + 1.96 * se),
+    alpha = 0.2
+  ) +
+  geom_line() +
+  facet_grid(onset ~ iu) +
+  labs(x = "Word minus POS mode back", y = "Partial effect (log-odds)")
+save_plot(p, "modeback_diff_smooths", width = 7, height = 5)
+```
+
+# Adding actual back
+
+The models above have only the expected remainder (the two mode back terms). Here actual back, the number of words really left in the IU, gets its own slope in each cell as well, as in the `place_back_modeback` models of `turn_bc_gam_allplace.qmd`. The mode back slopes then read as the effect of the expectation at a fixed actual remainder, and the back slope as the effect of the actual remainder at a fixed expectation. The questions are the same as above, now for three terms: does each slope differ from 0 in each cell, and do the cells differ?
+
+```{r}
+cells_back_formula <- onset ~ cell + # an intercept per cell
+  cell:mode_back_pos + # a POS-level mode back slope per cell
+  cell:modeback_diff + # a word minus POS slope per cell
+  cell:back + # an actual back slope per cell
+  s(place, by = cell, k = k_default) + # a place smooth per cell
+  s(docId, by = kind, bs = "re") # document random intercepts per onset type
+
+m_cells_back <- fit_or_load(
+  "cells_back_linear",
+  bam(
+    cells_back_formula,
+    data = stacked,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  ),
+  formula = cells_back_formula
+)
+
+save_text(summary(m_cells_back), "cells_back_linear_summary")
+summary(m_cells_back)
+```
+
+```{r}
+back_terms <- c("back", "modeback_diff", "mode_back_pos") # the three terms
+# Panel titles
+term_labels <- c(
+  back = "Actual back",
+  modeback_diff = "Word minus POS (modeback_diff)",
+  mode_back_pos = "POS-level mode back"
+)
+
+# Each cell's slope of each term, with its standard error, 95% CI and p-value
+slopes_back <- expand_grid(term = back_terms, cell = cell_levels) %>%
+  mutate(
+    coef = slope_name(cell, term),
+    estimate = coef(m_cells_back)[coef],
+    se = sqrt(diag(vcov(m_cells_back))[coef]),
+    lo = estimate - 1.96 * se,
+    hi = estimate + 1.96 * se,
+    p = 2 * pnorm(-abs(estimate / se))
+  ) %>%
+  separate(cell, c("kind", "iu"), sep = "_", remove = FALSE) %>%
+  select(-coef)
+
+save_table(slopes_back, "back_slopes_by_cell")
+
+# Slopes with CIs: one panel per term, colour = onset type
+p <- slopes_back %>%
+  mutate(term = factor(term_labels[term], term_labels)) %>%
+  ggplot(aes(estimate, iu, colour = kind)) +
+  geom_vline(xintercept = 0, colour = "grey60") +
+  geom_pointrange(
+    aes(xmin = lo, xmax = hi),
+    position = position_dodge(width = 0.4)
+  ) +
+  facet_wrap(~term) +
+  labs(x = "Slope (log-odds per word)", y = NULL, colour = "Onset")
+save_plot(p, "back_slopes_by_cell", width = 10, height = 3.5)
+```
+
+Contrasts between cells, as above, for all three terms:
+
+```{r}
+# The five contrasts between cells for each of the three terms
+contrasts_back <- lapply(back_terms, \(var) {
+  w <- contrast_weights(var)
+  bind_rows(lapply(w, \(x) wald(m_cells_back, x)), .id = "contrast") %>%
+    mutate(term = var, .before = 1)
+}) %>%
+  bind_rows()
+
+save_table(contrasts_back, "back_contrasts")
+contrasts_back
+```
+
+## A common word-level slope?
+
+With actual back in the model, the word-minus-POS slope is clearly non-zero for turn onsets but not for BC onsets, yet the contrasts above find no difference between the cells. To tell "no effect for BCs" from "the same effect, estimated less precisely for BCs", the cell-specific `modeback_diff` slopes are replaced by
+
+- `by_kind`: one slope for BC and one for turn onsets, each shared by terminal and non-terminal IUs
+- `common`: one slope for all four cells
+
+with everything else as in `m_cells_back` (`by_cell` below). If `common` fits as well as the others, a single pooled word-level effect is a fair summary.
+
+```{r}
+# As m_cells_back, but one word minus POS slope per onset type
+cells_back_kind_formula <- onset ~ cell +
+  cell:mode_back_pos +
+  kind:modeback_diff + # per onset type instead of per cell
+  cell:back +
+  s(place, by = cell, k = k_default) +
+  s(docId, by = kind, bs = "re")
+# As m_cells_back, but one word minus POS slope for all cells
+cells_back_common_formula <- onset ~ cell +
+  cell:mode_back_pos +
+  modeback_diff + # a single slope
+  cell:back +
+  s(place, by = cell, k = k_default) +
+  s(docId, by = kind, bs = "re")
+
+# Fit (or load) a model on the stacked data
+fit_cells <- function(name, f) {
+  fit_or_load(
+    name,
+    bam(
+      f,
+      data = stacked,
+      family = binomial(link = "logit"),
+      method = "fREML",
+      discrete = TRUE
+    ),
+    formula = f
+  )
+}
+m_back_kind <- fit_cells("cells_back_diff_by_kind", cells_back_kind_formula)
+m_back_common <- fit_cells("cells_back_diff_common", cells_back_common_formula)
+
+# The three versions, from most to least specific
+diff_slope_models <- list(
+  by_cell = m_cells_back,
+  by_kind = m_back_kind,
+  common = m_back_common
+)
+
+# AIC
+diff_slope_models %>%
+  lapply(\(m) tibble(AIC = AIC(m), edf = sum(m$edf))) %>%
+  bind_rows(.id = "modeback_diff slope") %>%
+  mutate(dAIC = AIC - min(AIC)) %>%
+  save_table("common_slope_aic")
+
+# Approximate likelihood ratio tests, simpler model first (see the note on
+# penalised fits in turn_bc_gam.qmd)
+lrt <- function(m0, m1, label) {
+  a <- anova(m0, m1, test = "Chisq") # deviance difference, chi-squared test
+  tibble(
+    comparison = label,
+    df = a$Df[2], # difference in (effective) degrees of freedom
+    deviance = a$Deviance[2], # difference in deviance
+    p = a$`Pr(>Chi)`[2]
+  )
+}
+bind_rows(
+  lrt(m_back_common, m_back_kind, "common vs by_kind"),
+  lrt(m_back_kind, m_cells_back, "by_kind vs by_cell"),
+  lrt(m_back_common, m_cells_back, "common vs by_cell")
+) %>%
+  save_table("common_slope_lrt")
+```
+
+The pooled slopes:
+
+```{r}
+# The coefficients of interest in the pooled models
+pooled_slopes <- bind_rows(
+  tibble(
+    model = "common",
+    coef = "modeback_diff" # the single slope
+  ),
+  tibble(
+    model = "by_kind",
+    coef = c("kindbc:modeback_diff", "kindturn:modeback_diff") # BC and turn slopes
+  )
+) %>%
+  mutate(
+    estimate = map2_dbl(model, coef, \(m, cf) coef(diff_slope_models[[m]])[cf]),
+    se = map2_dbl(model, coef, \(m, cf) {
+      sqrt(vcov(diff_slope_models[[m]])[cf, cf])
+    }),
+    lo = estimate - 1.96 * se, # 95% CI
+    hi = estimate + 1.96 * se,
+    p = 2 * pnorm(-abs(estimate / se))
+  )
+
+save_table(pooled_slopes, "common_slope_estimates")
+pooled_slopes
+```
+
+## How large a BC / turn difference can be ruled out?
+
+"No significant difference" only says something if the data could have shown a difference of a size that matters. For each BC − turn contrast of the `modeback_diff` slope, the 90% CI gives the equivalence bound at α = .05 (two one-sided tests): differences larger than `bound` (in either direction) are ruled out. For scale, the word-minus-POS slope itself is about −0.1 per word (`common` above).
+
+```{r}
+equivalence <- bind_rows(
+  # BC minus turn slope, with IU types pooled
+  wald(
+    m_back_kind,
+    c("kindbc:modeback_diff" = 1, "kindturn:modeback_diff" = -1)
+  ) %>%
+    mutate(contrast = "BC - turn, IU types pooled (by_kind)"),
+  # BC minus turn slope, in terminal IUs
+  wald(
+    m_cells_back,
+    contrast_weights("modeback_diff")[["BC - turn, terminal"]]
+  ) %>%
+    mutate(contrast = "BC - turn, terminal (by_cell)"),
+  # BC minus turn slope, in non-terminal IUs
+  wald(
+    m_cells_back,
+    contrast_weights("modeback_diff")[["BC - turn, non-terminal"]]
+  ) %>%
+    mutate(contrast = "BC - turn, non-terminal (by_cell)")
+) %>%
+  transmute(
+    contrast,
+    estimate,
+    se,
+    lo90 = estimate - qnorm(0.95) * se, # 90% CI
+    hi90 = estimate + qnorm(0.95) * se,
+    p_difference = p, # test of a difference
+    # Smallest symmetric bound for which equivalence holds at alpha = .05
+    bound = pmax(abs(lo90), abs(hi90))
+  )
+
+save_table(equivalence, "equivalence_bc_turn")
+equivalence
+```
+
+Smooth version, with `s(back, by = cell)` added to the smooth model above:
+
+```{r}
+cells_back_smooth_formula <- onset ~ cell + # an intercept per cell
+  s(place, by = cell, k = k_default) + # a place smooth per cell
+  s(mode_back_pos, by = cell, k = 4) + # a POS-level mode back smooth per cell
+  s(modeback_diff, by = cell, k = k_default) + # a word minus POS smooth per cell
+  s(back, by = cell, k = k_default) + # an actual back smooth per cell
+  s(docId, by = kind, bs = "re") # document random intercepts per onset type
+
+m_cells_back_smooth <- fit_or_load(
+  "cells_back_smooth",
+  bam(
+    cells_back_smooth_formula,
+    data = stacked,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  ),
+  formula = cells_back_smooth_formula
+)
+
+save_text(summary(m_cells_back_smooth), "cells_back_smooth_summary")
+summary(m_cells_back_smooth)
+```
+
+All four models (same data, so the conditional AICs are comparable):
+
+```{r}
+list(
+  "mode back terms, linear" = m_cells,
+  "mode back terms, smooth" = m_cells_smooth,
+  "+ actual back, linear" = m_cells_back,
+  "+ actual back, smooth" = m_cells_back_smooth
+) %>%
+  lapply(\(m) tibble(AIC = AIC(m), edf = sum(m$edf))) %>% # AIC and edf of each
+  bind_rows(.id = "model") %>%
+  mutate(dAIC = AIC - min(AIC)) %>%
+  arrange(AIC) %>%
+  save_table("back_aic")
+```
+
+# Prediction error instead of actual back
+
+As "Prediction error instead of actual back" in `turn_bc_gam_allplace.qmd`: actual back is replaced by `back_err = back - mode_back`, how many more (or fewer) words are left than the word-level mode predicts. Since `back = back_err + mode_back_pos + modeback_diff`, the linear model is the actual back model above reparameterised (same fit and AIC), with
+
+- `back_err` slope = the actual back slope above: the effect of the surprise at a fixed expectation
+- `mode_back_pos` and `modeback_diff` slopes = the ones above plus the actual back slope: the total effect of a larger expected remainder, once actual back is allowed to move with it
+
+The smooth version is a different model, with a smooth on the error instead of on actual back.
+
+```{r}
+cells_err_formula <- onset ~ cell + # an intercept per cell
+  cell:mode_back_pos + # a POS-level mode back slope per cell
+  cell:modeback_diff + # a word minus POS slope per cell
+  cell:back_err + # a back error slope per cell
+  s(place, by = cell, k = k_default) + # a place smooth per cell
+  s(docId, by = kind, bs = "re") # document random intercepts per onset type
+
+m_cells_err <- fit_or_load(
+  "cells_backerr_linear",
+  bam(
+    cells_err_formula,
+    data = stacked,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  ),
+  formula = cells_err_formula
+)
+
+save_text(summary(m_cells_err), "cells_backerr_linear_summary")
+summary(m_cells_err)
+```
+
+```{r}
+err_terms <- c("back_err", "modeback_diff", "mode_back_pos") # the three terms
+# Panel titles
+err_labels <- c(
+  back_err = "Actual minus word-predicted back (back_err)",
+  modeback_diff = "Word minus POS (modeback_diff)",
+  mode_back_pos = "POS-level mode back"
+)
+
+# Each cell's slope of each term, with its standard error, 95% CI and p-value
+slopes_err <- expand_grid(term = err_terms, cell = cell_levels) %>%
+  mutate(
+    coef = slope_name(cell, term),
+    estimate = coef(m_cells_err)[coef],
+    se = sqrt(diag(vcov(m_cells_err))[coef]),
+    lo = estimate - 1.96 * se,
+    hi = estimate + 1.96 * se,
+    p = 2 * pnorm(-abs(estimate / se))
+  ) %>%
+  separate(cell, c("kind", "iu"), sep = "_", remove = FALSE) %>%
+  select(-coef)
+
+save_table(slopes_err, "backerr_slopes_by_cell")
+
+# Slopes with CIs: one panel per term, colour = onset type
+p <- slopes_err %>%
+  mutate(term = factor(err_labels[term], err_labels)) %>%
+  ggplot(aes(estimate, iu, colour = kind)) +
+  geom_vline(xintercept = 0, colour = "grey60") +
+  geom_pointrange(
+    aes(xmin = lo, xmax = hi),
+    position = position_dodge(width = 0.4)
+  ) +
+  facet_wrap(~term) +
+  labs(x = "Slope (log-odds per word)", y = NULL, colour = "Onset")
+save_plot(p, "backerr_slopes_by_cell", width = 10, height = 3.5)
+
+# The five contrasts between cells for each of the three terms
+contrasts_err <- lapply(err_terms, \(var) {
+  w <- contrast_weights(var)
+  bind_rows(lapply(w, \(x) wald(m_cells_err, x)), .id = "contrast") %>%
+    mutate(term = var, .before = 1)
+}) %>%
+  bind_rows()
+
+save_table(contrasts_err, "backerr_contrasts")
+contrasts_err
+```
+
+Smooth version:
+
+```{r}
+cells_err_smooth_formula <- onset ~ cell + # an intercept per cell
+  s(place, by = cell, k = k_default) + # a place smooth per cell
+  s(mode_back_pos, by = cell, k = 4) + # a POS-level mode back smooth per cell
+  s(modeback_diff, by = cell, k = k_default) + # a word minus POS smooth per cell
+  s(back_err, by = cell, k = k_default) + # a back error smooth per cell
+  s(docId, by = kind, bs = "re") # document random intercepts per onset type
+
+m_cells_err_smooth <- fit_or_load(
+  "cells_backerr_smooth",
+  bam(
+    cells_err_smooth_formula,
+    data = stacked,
+    family = binomial(link = "logit"),
+    method = "fREML",
+    discrete = TRUE
+  ),
+  formula = cells_err_smooth_formula
+)
+
+save_text(summary(m_cells_err_smooth), "cells_backerr_smooth_summary")
+summary(m_cells_err_smooth)
+
+# All six models of this part, by AIC
+list(
+  "mode back terms, linear" = m_cells,
+  "mode back terms, smooth" = m_cells_smooth,
+  "+ actual back, linear" = m_cells_back,
+  "+ actual back, smooth" = m_cells_back_smooth,
+  "+ back_err, linear" = m_cells_err,
+  "+ back_err, smooth" = m_cells_err_smooth
+) %>%
+  lapply(\(m) tibble(AIC = AIC(m), edf = sum(m$edf))) %>%
+  bind_rows(.id = "model") %>%
+  mutate(dAIC = AIC - min(AIC)) %>%
+  arrange(AIC) %>%
+  save_table("backerr_aic")
+```
+
+# Which words carry the word-level information?
+
+For the onsets in each cell, the words whose mode back differs most from their POS's (|`modeback_diff`| ≥ 1), by POS: if explanation 2 holds, the BC onsets in terminal IUs should include many such words (e.g. *yeah*, *right*, *know*) that are rare among the non-terminal ones.
+
+```{r}
+# The words on which an onset happens
+onset_words <- stacked %>%
+  filter(onset) %>%
+  mutate(word = tolower(text))
+
+# Share of onsets with a word-level mode back that differs from the POS one
+onset_words %>%
+  group_by(kind, iu) %>%
+  summarise(
+    onsets = n(),
+    share_differs = mean(modeback_diff != 0), # share with any difference
+    mean_abs_diff = mean(abs(modeback_diff)), # average size of the difference
+    .groups = "drop"
+  ) %>%
+  save_table("onset_diff_share")
+
+# Most frequent onset words with |modeback_diff| >= 1, per cell
+top_diff_words <- onset_words %>%
+  filter(abs(modeback_diff) >= 1) %>%
+  count(kind, iu, word, pos_class, name = "onsets") %>%
+  group_by(kind, iu) %>%
+  slice_max(onsets, n = 10, with_ties = FALSE) %>% # top 10 per cell
+  ungroup() %>%
+  arrange(kind, iu, desc(onsets))
+
+save_table(top_diff_words, "top_diff_words")
+top_diff_words
+
+# Onsets by POS in each cell (share of the cell's onsets)
+onset_words %>%
+  count(kind, iu, pos_class) %>%
+  group_by(kind, iu) %>%
+  mutate(share = n / sum(n)) %>% # share of the cell's onsets
+  ungroup() %>%
+  select(-n) %>%
+  # One column per cell
+  pivot_wider(
+    names_from = c(kind, iu),
+    values_from = share,
+    values_fill = 0
+  ) %>%
+  arrange(desc(bc_terminal)) %>%
+  save_table("onset_pos_shares")
+```

@@ -10,6 +10,7 @@ library(ggplot2)
 library(scales)
 library(jsonlite)
 library(optparse)
+library(here)
 
 option_list <- list(
   make_option(c("-c", "--config"), type = "character", default = NULL,
@@ -27,7 +28,7 @@ color_params <- config$color_params
 alpha_param <- config$alpha_param
 
 mapper_result <- fromJSON(input_json)
-posterior_param_simple <- read.csv("data/posterior_param_simple.csv")
+posterior_param_simple <- read.csv(here("data", "posterior_param_simple.csv"))
 points_in_vertex <- mapper_result$points_in_vertex
 
 plot_mapper_colored_gg <- function(mapper_result, 

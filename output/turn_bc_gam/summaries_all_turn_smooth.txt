@@ -4,20 +4,20 @@ Family: binomial
 Link function: logit 
 
 Formula:
-has_turn_onset ~ s(place, k = 8) + s(mode_back, k = 5) + s(docId, 
+has_turn_onset ~ s(place, k = 6) + s(mode_back, k = 6) + s(docId, 
     bs = "re")
 
 Parametric coefficients:
             Estimate Std. Error z value Pr(>|z|)    
-(Intercept)  -4.1133     0.2462  -16.71   <2e-16 ***
+(Intercept)  -4.0457     0.2396  -16.88   <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Approximate significance of smooth terms:
                 edf Ref.df Chi.sq  p-value    
-s(place)      3.287  3.958  30.87 2.32e-06 ***
-s(mode_back)  2.338  2.753 107.10  < 2e-16 ***
-s(docId)     50.669 58.000 622.32  < 2e-16 ***
+s(place)      2.238  2.719  32.23 9.74e-06 ***
+s(mode_back)  3.407  3.893 109.49  < 2e-16 ***
+s(docId)     50.674 58.000 623.42  < 2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
@@ -30,25 +30,25 @@ Family: binomial
 Link function: logit 
 
 Formula:
-has_turn_onset ~ s(place, k = 8) + s(back, k = 8) + s(docId, 
+has_turn_onset ~ s(place, k = 6) + s(back, k = 6) + s(docId, 
     bs = "re")
 
 Parametric coefficients:
             Estimate Std. Error z value Pr(>|z|)    
-(Intercept)  -4.6567     0.3761  -12.38   <2e-16 ***
+(Intercept)  -4.8898     0.3552  -13.77   <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Approximate significance of smooth terms:
             edf Ref.df Chi.sq  p-value    
-s(place)  4.289  4.943  32.91 3.63e-06 ***
-s(back)   3.387  3.986 412.82  < 2e-16 ***
-s(docId) 50.283 58.000 568.86  < 2e-16 ***
+s(place)  1.001  1.001  22.39 2.33e-06 ***
+s(back)   3.070  3.492 405.22  < 2e-16 ***
+s(docId) 50.294 59.000 570.72  < 2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-R-sq.(adj) =  0.0207   Deviance explained = 7.56%
-fREML =  66590  Scale est. = 1         n = 63895
+R-sq.(adj) =  0.0204   Deviance explained = 7.45%
+fREML =  66592  Scale est. = 1         n = 63895
 
 $place_back_modeback
 
@@ -56,26 +56,26 @@ Family: binomial
 Link function: logit 
 
 Formula:
-has_turn_onset ~ s(place, k = 8) + s(back, k = 8) + s(mode_back, 
-    k = 5) + s(docId, bs = "re")
+has_turn_onset ~ s(place, k = 6) + s(back, k = 6) + s(mode_back, 
+    k = 6) + s(docId, bs = "re")
 
 Parametric coefficients:
             Estimate Std. Error z value Pr(>|z|)    
-(Intercept)   -4.951      0.388  -12.76   <2e-16 ***
+(Intercept)  -4.9834     0.3931  -12.68   <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Approximate significance of smooth terms:
                 edf Ref.df Chi.sq  p-value    
-s(place)      4.039  4.708  47.79  < 2e-16 ***
-s(back)       3.089  3.683 330.41  < 2e-16 ***
-s(mode_back)  2.369  2.785  30.70 1.19e-05 ***
-s(docId)     50.352 58.000 577.92  < 2e-16 ***
+s(place)      2.234  2.715  49.78 6.42e-07 ***
+s(back)       2.816  3.246 326.26  < 2e-16 ***
+s(mode_back)  3.435  3.920  33.84 1.02e-06 ***
+s(docId)     50.364 58.000 580.06  < 2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-R-sq.(adj) =  0.0216   Deviance explained = 7.72%
-fREML =  66579  Scale est. = 1         n = 63895
+R-sq.(adj) =  0.0215   Deviance explained = 7.69%
+fREML =  66580  Scale est. = 1         n = 63895
 
 $place_modeback_int
 
@@ -83,25 +83,25 @@ Family: binomial
 Link function: logit 
 
 Formula:
-has_turn_onset ~ s(place, k = 8) + s(mode_back, k = 5) + ti(place, 
-    mode_back, k = c(6, 5)) + s(docId, bs = "re")
+has_turn_onset ~ s(place, k = 6) + s(mode_back, k = 6) + ti(place, 
+    mode_back, k = c(6, 6)) + s(docId, bs = "re")
 
 Parametric coefficients:
             Estimate Std. Error z value Pr(>|z|)    
-(Intercept)  -2.8399     0.5931  -4.788 1.68e-06 ***
+(Intercept)  -2.8564     0.5869  -4.867 1.13e-06 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Approximate significance of smooth terms:
                        edf Ref.df  Chi.sq p-value    
-s(place)             2.771  3.375   5.416   0.207    
-s(mode_back)         2.361  2.655   3.110   0.263    
-ti(mode_back,place)  3.340  4.208   7.997   0.101    
-s(docId)            50.675 59.000 623.143  <2e-16 ***
+s(place)             2.221  2.648   5.070   0.165    
+s(mode_back)         2.769  3.127   3.779   0.275    
+ti(place,mode_back)  3.459  4.454   7.387   0.137    
+s(docId)            50.678 58.000 623.932  <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-R-sq.(adj) =  0.0145   Deviance explained = 5.64%
+R-sq.(adj) =  0.0145   Deviance explained = 5.63%
 fREML =  66751  Scale est. = 1         n = 63895
 
 $place_back_int
@@ -110,26 +110,26 @@ Family: binomial
 Link function: logit 
 
 Formula:
-has_turn_onset ~ s(place, k = 8) + s(back, k = 8) + ti(place, 
+has_turn_onset ~ s(place, k = 6) + s(back, k = 6) + ti(place, 
     back, k = c(6, 6)) + s(docId, bs = "re")
 
 Parametric coefficients:
             Estimate Std. Error z value Pr(>|z|)    
-(Intercept)  -4.6398     0.5378  -8.628   <2e-16 ***
+(Intercept)  -4.8378     0.5038  -9.602   <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Approximate significance of smooth terms:
                   edf Ref.df  Chi.sq p-value    
-s(place)        4.288  4.943  12.211  0.0209 *  
-s(back)         3.387  3.987  79.882  <2e-16 ***
-ti(place,back)  1.002  1.003   0.002  0.9786    
-s(docId)       50.283 58.000 568.829  <2e-16 ***
+s(place)        1.000  1.001   0.732   0.392    
+s(back)         3.072  3.495  78.015  <2e-16 ***
+ti(place,back)  1.004  1.006   0.020   0.897    
+s(docId)       50.293 59.000 570.737  <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-R-sq.(adj) =  0.0207   Deviance explained = 7.56%
-fREML =  66588  Scale est. = 1         n = 63895
+R-sq.(adj) =  0.0204   Deviance explained = 7.45%
+fREML =  66591  Scale est. = 1         n = 63895
 
 $place_back_modeback_int
 
@@ -137,27 +137,27 @@ Family: binomial
 Link function: logit 
 
 Formula:
-has_turn_onset ~ s(place, k = 8) + s(back, k = 8) + s(mode_back, 
-    k = 5) + ti(place, back, k = c(6, 6)) + ti(place, mode_back, 
-    k = c(6, 5)) + s(docId, bs = "re")
+has_turn_onset ~ s(place, k = 6) + s(back, k = 6) + s(mode_back, 
+    k = 6) + ti(place, back, k = c(6, 6)) + ti(place, mode_back, 
+    k = c(6, 6)) + s(docId, bs = "re")
 
 Parametric coefficients:
             Estimate Std. Error z value Pr(>|z|)    
-(Intercept)  -4.0916     0.7127  -5.741 9.41e-09 ***
+(Intercept)  -4.1515     0.7144  -5.811 6.22e-09 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Approximate significance of smooth terms:
                        edf Ref.df  Chi.sq p-value    
-s(place)             3.586  4.240   4.743  0.2452    
-s(back)              3.061  3.659  68.592  <2e-16 ***
-s(mode_back)         2.342  2.637   4.434  0.1678    
-ti(place,back)       1.000  1.000   0.371  0.5424    
-ti(mode_back,place)  4.064  5.066  13.454  0.0329 *  
-s(docId)            50.350 58.000 576.591  <2e-16 ***
+s(place)             1.981  2.344   1.630  0.4861    
+s(back)              2.792  3.225  67.425  <2e-16 ***
+s(mode_back)         2.659  3.000   4.927  0.1768    
+ti(place,back)       1.001  1.002   0.515  0.4739    
+ti(place,mode_back)  4.526  5.749  13.995  0.0451 *  
+s(docId)            50.362 58.000 578.608  <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-R-sq.(adj) =  0.022   Deviance explained = 7.83%
-fREML =  66572  Scale est. = 1         n = 63895
+R-sq.(adj) =  0.0218   Deviance explained = 7.79%
+fREML =  66574  Scale est. = 1         n = 63895
 

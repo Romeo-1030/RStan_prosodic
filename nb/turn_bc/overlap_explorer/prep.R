@@ -1,16 +1,22 @@
 # Builds the data for the overlap explorer app (app.R in this folder).
-# Rebuilds the word-level data from turn_bc_explore.qmd, keeping which unit each
-# overlap onset matches, and pulls coefficients from the cached models in
-# output/turn_bc_models/. Run from anywhere in the repo:
+# Rebuilds the word-level data of turn_bc_pos_moderators_data.R (all places,
+# including the first word of the IU), keeping which unit each overlap onset
+# matches, and summarises the best model of the grid in
+# turn_bc_pos_moderators.qmd (lowest AIC in grid_ranking.csv; run that notebook
+# first), and the place * mode_back models (with and without back error) with
+# no moderators, which it fits.
+# The app loads the fitted models from
+# output/turn_bc_pos_moderators_models/ itself. Run from anywhere in the repo:
 #   source(here::here("nb", "turn_bc", "overlap_explorer", "prep.R"))
 
 library(here)
 library(dplyr)
 library(readr)
 library(stringr)
-library(lme4)
+library(mgcv)
 
-model_dir <- here("output", "turn_bc_models")
+model_dir <- here("output", "turn_bc_pos_moderators_models")
+ranking_path <- here("output", "turn_bc_pos_moderators", "grid_ranking.csv")
 out_dir <- here("output", "overlap_explorer")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -20,6 +26,19 @@ back_given_place_summ <- read_csv(
   show_col_types = FALSE
 )
 sbc <- sbc %>% left_join(back_given_place_summ, by = c(text = "word", "place"))
+
+# POS-level mode back, as in "POS instead of word" in turn_bc_gam_allplace.qmd
+word_pos <- read_csv(here("data", "word_pos.csv"), show_col_types = FALSE) %>%
+  rename(pos_class = POS)
+pos_back_summ <- read_csv(
+  here("data", "conditional_back_pos_summary.csv"),
+  show_col_types = FALSE
+) %>%
+  select(pos_class = POS, place, mode_back_pos = mode_back)
+sbc <- sbc %>%
+  mutate(text_lower = tolower(text)) %>%
+  left_join(word_pos, by = c(text_lower = "word")) %>%
+  left_join(pos_back_summ, by = c("pos_class", "place"))
 
 # Overlap onsets ----------------------------------------------------------
 # As in "Divide into BC or not" in turn_bc_explore.qmd, but keeping the matched unit
@@ -97,9 +116,8 @@ sbc <- sbc %>%
   ) %>%
   ungroup()
 
-# Subsets -----------------------------------------------------------------
-# Terminal intonation ("Non-terminal IUs only") and syntactic possible ends
-# ("Syntactically incomplete IUs only"), needed for the notboth subset
+# IU type -----------------------------------------------------------------
+# Terminal intonation, for the model's cells (onset type x IU type)
 
 unit_terminal <- sbc %>%
   group_by(docId, unitId) %>%
@@ -108,76 +126,13 @@ unit_terminal <- sbc %>%
     .groups = "drop"
   )
 
-core_deps <- c(
-  "dobj",
-  "pobj",
-  "pcomp",
-  "attr",
-  "acomp",
-  "oprd",
-  "dative",
-  "xcomp",
-  "ccomp",
-  "nsubj",
-  "nsubjpass",
-  "csubj"
-)
-dangling_deps <- c(
-  "cc",
-  "preconj",
-  "prep",
-  "det",
-  "predet",
-  "poss",
-  "mark",
-  "aux",
-  "auxpass",
-  "case"
-)
-
-parses <- list.files(
-  here("data", "new_spacy_parses"),
-  pattern = "\\.csv$",
-  full.names = TRUE
-) %>%
-  lapply(\(f) {
-    read_csv(
-      f,
-      col_select = c(docId, unitId, text, spacy_id, head, dep),
-      show_col_types = FALSE
-    )
-  }) %>%
-  bind_rows()
-
-iu_syntax <- parses %>%
-  filter(!is.na(spacy_id), dep != "punct") %>%
-  arrange(docId, spacy_id) %>%
-  group_by(docId) %>%
-  mutate(
-    head = as.numeric(head),
-    max_head_so_far = cummax(head),
-    core_head = if_else(dep %in% core_deps, head, Inf),
-    min_core_head_after = lead(rev(cummin(rev(core_head))), default = Inf)
-  ) %>%
-  ungroup() %>%
-  group_by(docId, unitId) %>%
-  slice_max(spacy_id, n = 1) %>%
-  ungroup() %>%
-  transmute(
-    docId,
-    unitId,
-    iu_possible_end = !(max_head_so_far > spacy_id |
-      min_core_head_after <= spacy_id |
-      dep %in% dangling_deps)
-  )
-
 # Candidate words ---------------------------------------------------------
-# sbc_noninit, flagged for membership of sbc_back and its subsets
+# All words with a back distribution, flagged for membership of sbc_back and
+# its subsets
 
 words <- sbc %>%
-  filter(place != 1, !is.na(mean_back)) %>%
+  filter(!is.na(mean_back)) %>%
   left_join(unit_terminal, by = c("docId", "unitId")) %>%
-  left_join(iu_syntax, by = c("docId", "unitId")) %>%
   transmute(
     wid = corpusSeq,
     docId,
@@ -188,6 +143,9 @@ words <- sbc %>%
     back,
     mode_back,
     back_err = back - mode_back,
+    pos_class,
+    mode_back_pos,
+    modeback_diff = mode_back - mode_back_pos,
     overlap_label = str_remove(overlap_label, "^\\["),
     is_overlapped = isOverlap %in% TRUE | word_has_bracket,
     word_has_bracket,
@@ -198,10 +156,9 @@ words <- sbc %>%
     mid_unitId,
     turn_has_bc_onset = turn_has_bc_onset %in% TRUE,
     turn_has_turn_onset = turn_has_turn_onset %in% TRUE,
-    in_back = !is.na(back) & !is.na(mode_back),
-    in_nonterm = in_back & !unit_is_terminal,
-    in_notboth = in_back &
-      !(unit_is_terminal %in% TRUE & iu_possible_end %in% TRUE)
+    iu = if_else(unit_is_terminal, "terminal", "nonterminal"),
+    # The rows of sbc_back in turn_bc_pos_moderators_data.R
+    in_model = !is.na(back) & !is.na(mode_back) & !is.na(mode_back_pos) & !is.na(iu)
   )
 stopifnot(!anyDuplicated(words$wid))
 
@@ -229,95 +186,139 @@ units <- sbc %>%
   arrange(docId, unitId)
 
 # Models ------------------------------------------------------------------
-# Everything in turn_bc_explore.qmd except the mean / median back models and
-# the syntactically incomplete (incompl, subj) subsets
+# Models fitted to the BC and turn halves stacked together, as in
+# turn_bc_pos_moderators_data.R: the best of the grid in
+# turn_bc_pos_moderators.qmd by AIC (by = cell / kind terms), and the old
+# place * mode_back models, with and without back error, with no moderators
+# (one intercept, place smooth and document effect for both onset types and IU
+# types), fitted here.
+# Per-term contributions over each half are summarised here (constant and term
+# means for centring); the app predicts the examples from the model files
+# themselves.
 
-model_names <- list.files(model_dir, pattern = "^model_.*\\.rds$") %>%
-  str_remove("\\.rds$") %>%
-  str_subset("meanback|medianback|incompl|subj", negate = TRUE)
+kinds <- c("bc", "turn")
 
-subset_labels <- c(
-  all = "All IUs",
-  nonterm = "Non-terminal IUs",
-  notboth = "Not both complete"
+# The stacked data: each onset type's half, in the order of
+# turn_bc_pos_moderators_data.R (checked against the grid models below)
+stacked <- bind_rows(lapply(kinds, \(kind) {
+  words[words$in_model & words[[paste0("turn_has_", kind, "_onset")]], ] %>%
+    mutate(kind = kind, onset = .data[[paste0("has_", kind, "_onset")]])
+})) %>%
+  mutate(kind = factor(kind, kinds), docId = factor(docId))
+
+# The models with no moderators, fitted here. Cached like the grid models:
+# refitted only if missing or the formula changed
+simple_formulas <- list(
+  stacked_place_modeback_backerr = onset ~ s(place, k = 6) +
+    s(mode_back, k = 6) + s(back_err, k = 6) +
+    ti(place, mode_back, k = c(6, 6)) + s(docId, bs = "re"),
+  stacked_place_modeback = onset ~ s(place, k = 6) + s(mode_back, k = 6) +
+    ti(place, mode_back, k = c(6, 6)) + s(docId, bs = "re")
 )
+for (id in names(simple_formulas)) {
+  f <- simple_formulas[[id]]
+  path <- file.path(model_dir, paste0(id, ".rds"))
+  cached <- if (file.exists(path)) readRDS(path)
+  if (is.null(cached) || !identical(deparse1(formula(cached)), deparse1(f))) {
+    message("Fitting ", id)
+    saveRDS(
+      bam(
+        f,
+        data = stacked,
+        family = binomial(link = "logit"),
+        method = "fREML",
+        discrete = TRUE
+      ),
+      path
+    )
+  }
+  rm(cached)
+}
 
-pool_rows <- function(spec) {
-  keep <- switch(
-    spec$base,
-    noninit = rep(TRUE, nrow(words)),
-    back = words$in_back,
-    nonterm = words$in_nonterm,
-    notboth = words$in_notboth
+ranking <- read_csv(ranking_path, show_col_types = FALSE) %>%
+  arrange(AIC) %>%
+  mutate(rank = row_number())
+model_ids <- c(ranking$id[1], names(simple_formulas))
+
+# Right-hand side without the document effect, and without the k's, for labels
+short_rhs <- function(m) {
+  labs <- attr(terms(formula(m)), "term.labels")
+  labs <- labs[!str_detect(labs, "^s\\(docId")]
+  paste(str_remove_all(labs, ",\\s*k\\s*=\\s*(c\\([^)]*\\)|\\d+)"), collapse = " + ")
+}
+
+summarise_model <- function(id) {
+  message(id)
+  m <- readRDS(file.path(model_dir, paste0(id, ".rds")))
+  # Same rows as `stacked`, in the same order, so its kind marks the halves
+  stopifnot(
+    nrow(m$model) == nrow(stacked),
+    identical(as.logical(m$y), stacked$onset),
+    identical(as.numeric(m$model$place), as.numeric(stacked$place)),
+    is.null(m$model$kind) || identical(m$model$kind, stacked$kind)
   )
-  keep & switch(
-    spec$outcome,
-    any = TRUE,
-    bc = words$turn_has_bc_onset,
-    turn = words$turn_has_turn_onset
+  # Each row has one non-zero column per by-term (its own cell or kind), so the
+  # by-level columns are summed into one term: "s(place):cellbc_terminal" ->
+  # "s(place)"
+  tm <- predict(m, as.data.frame(m$model), type = "terms")
+  term_group <- setNames(str_remove(colnames(tm), ":(cell|kind).*$"), colnames(tm))
+  tm_grouped <- t(rowsum(t(tm), term_group, reorder = FALSE))
+  fixed <- setdiff(colnames(tm_grouped), "s(docId)")
+
+  # The constant is the linear predictor minus the sum of the terms (discrete
+  # bam predictions don't return it as attr(tm, "constant"))
+  offset <- predict(m, as.data.frame(m$model)) - rowSums(tm)
+  stopifnot(diff(range(offset)) < 1e-8)
+
+  by_kind <- lapply(setNames(kinds, kinds), \(kind) {
+    rows <- stacked$kind == kind
+    pool <- words$in_model & words[[paste0("turn_has_", kind, "_onset")]]
+    y <- words[[paste0("has_", kind, "_onset")]]
+    if (sum(pool) != sum(rows) || sum(y[pool]) != sum(m$y[rows])) {
+      warning(sprintf(
+        "%s, %s: pool has %d rows / %d events, model has %d / %d",
+        id, kind, sum(pool), sum(y[pool]), sum(rows), sum(m$y[rows])
+      ))
+    }
+    list(
+      nobs = sum(rows),
+      n_events = sum(m$y[rows]),
+      term_means = colMeans(tm_grouped[rows, fixed, drop = FALSE])
+    )
+  })
+
+  sm <- summary(m)
+  aic <- AIC(m)
+  list(
+    name = id,
+    label = short_rhs(m),
+    formula = deparse1(formula(m)),
+    term_group = term_group,
+    constant = unname(offset[1]),
+    by_kind = by_kind,
+    aic = aic,
+    # Place among the grid models (where it would be, if not one of them)
+    in_grid = id %in% ranking$id,
+    rank = sum(ranking$AIC < aic - 1e-6) + 1,
+    d_aic = aic - min(ranking$AIC),
+    p_table = as.data.frame(sm$p.table),
+    s_table = as.data.frame(sm$s.table),
+    dev_expl = sm$dev.expl
   )
 }
 
-models <- lapply(model_names, \(name) {
-  m <- readRDS(file.path(model_dir, paste0(name, ".rds")))
-  outcome <- case_when(
-    str_detect(name, "^model_bc_|_bc(_|$)") ~ "bc",
-    str_detect(name, "^model_turn_|_turn(_|$)") ~ "turn",
-    .default = "any"
-  )
-  subset <- str_extract(name, "(nonterm|notboth)$") %>% coalesce("all")
-  base <- if (str_detect(name, "^model_overlap_on")) {
-    "noninit"
-  } else if (subset == "all") {
-    "back"
-  } else {
-    subset
-  }
-  rhs <- formula(m) %>% nobars() %>% terms() %>% delete.response() %>% formula()
-  environment(rhs) <- globalenv()
-  re <- ranef(m)$docId
-  spec <- list(
-    name = name,
-    outcome = outcome,
-    base = base,
-    subset = subset,
-    label = paste0(
-      str_remove(deparse1(rhs), "^~\\s*"),
-      if (subset != "all") paste0("  [", subset_labels[[subset]], "]")
-    ),
-    formula = deparse1(formula(m)),
-    rhs = rhs,
-    beta = fixef(m),
-    coefs = as.data.frame(coef(summary(m))),
-    re = setNames(re[, "(Intercept)"], rownames(re)),
-    nobs = nobs(m),
-    n_events = sum(getME(m, "y")),
-    aic = AIC(m)
-  )
-  # Check the pool reproduces the model's data
-  pool <- pool_rows(spec)
-  y <- switch(
-    outcome,
-    any = words$word_has_bracket,
-    bc = words$has_bc_onset,
-    turn = words$has_turn_onset
-  )
-  if (sum(pool) != spec$nobs || sum(y[pool]) != spec$n_events) {
-    warning(sprintf(
-      "%s: pool has %d rows / %d events, model has %d / %d",
-      name,
-      sum(pool),
-      sum(y[pool]),
-      spec$nobs,
-      spec$n_events
-    ))
-  }
-  spec
-}) %>%
-  setNames(model_names)
+models <- lapply(model_ids, summarise_model) %>%
+  setNames(model_ids)
 
 saveRDS(
-  list(words = words, tokens = tokens, units = units, models = models),
+  list(
+    words = words,
+    tokens = tokens,
+    units = units,
+    models = models,
+    n_grid = nrow(ranking),
+    model_dir = "turn_bc_pos_moderators_models"
+  ),
   file.path(out_dir, "explorer_data.rds")
 )
 message("Saved ", file.path(out_dir, "explorer_data.rds"))

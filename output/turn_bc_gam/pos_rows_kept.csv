@@ -1,0 +1,5 @@
+subset,kind,n_rows,n_pos,prop_kept
+all,bc,34516,34516,1
+all,turn,63895,63895,1
+nonterm,bc,20635,20635,1
+nonterm,turn,34797,34797,1

@@ -1,0 +1,5 @@
+place_int,expectation,remainder,exp_by,rem_by,form,dAIC
+expected,pos_word,back,kind,cell,smooth,0
+both,pos_word,back,kind,cell,smooth,1.0904948706483992
+none,pos_word,back,kind,cell,smooth,49.63684249331345
+actual,pos_word,back,kind,cell,smooth,65.84382142118193

@@ -1,8 +1,8 @@
 # Conditional distribution of Back given observed Place
 # G(x | y) = P(Back = x | Place = y), where x = length - place + 1
 
-project_path <- "/Users/lu/Desktop/Projects/RStan_prosodic"
-parameter_path <- file.path(project_path, "data", "posterior_param_simple.csv")
+library(here)
+parameter_path <- here("data", "posterior_param_simple.csv")
 
 # Get the PMF functions already defined in mapper_pre.R without running the
 # rest of that analysis file.
@@ -18,7 +18,7 @@ pmf_env$dnbinom <- stats::dnbinom
 pmf_env$plogis <- stats::plogis
 pmf_env$inv.logit <- stats::plogis
 
-mapper_code <- parse(file.path(project_path, "src", "mapper_pre.R"))
+mapper_code <- parse(here("src", "mapper_pre.R"))
 for (code in mapper_code) {
   if (is.call(code) && identical(code[[1]], as.name("<-")) &&
       is.symbol(code[[2]]) && as.character(code[[2]]) %in% pmf_names) {
@@ -92,20 +92,20 @@ conditional_back_summary <- do.call(rbind, all_summary)
 
 write.csv(
   conditional_back_pmf,
-  file.path(project_path, "data", "conditional_back_pmf.csv"),
+  here("data", "conditional_back_pmf.csv"),
   row.names = FALSE
 )
 
 write.csv(
   conditional_back_summary,
-  file.path(project_path, "data", "conditional_back_summary.csv"),
+  here("data", "conditional_back_summary.csv"),
   row.names = FALSE
 )
 
 # POS version: average the conditional PMFs first, then calculate summaries.
 library(tidyverse)
 
-pos_files <- list.files(file.path(project_path, "data", "new_spacy_parses"),
+pos_files <- list.files(here("data", "new_spacy_parses"),
                         pattern = "\\.csv$", full.names = TRUE)
 spacy_pos <- map_dfr(pos_files, function(file) {
   read_csv(file, col_types = cols_only(
@@ -133,9 +133,12 @@ word_pos <- spacy_pos %>%
   ungroup() %>%
   select(word = text, POS)
 
+# Word -> POS lookup, so other analyses can join the POS-level summaries
+write.csv(word_pos, here("data", "word_pos.csv"), row.names = FALSE)
+
 # Read the existing word-level PMFs; no need to regenerate them for this block.
 conditional_back_pmf <- read.csv(
-  file.path(project_path, "data", "conditional_back_pmf.csv")
+  here("data", "conditional_back_pmf.csv")
 )
 
 conditional_back_pos_pmf <- conditional_back_pmf %>%
@@ -156,11 +159,11 @@ conditional_back_pos_summary <- conditional_back_pos_pmf %>%
 
 write.csv(
   conditional_back_pos_pmf,
-  file.path(project_path, "data", "conditional_back_pos_pmf.csv"),
+  here("data", "conditional_back_pos_pmf.csv"),
   row.names = FALSE
 )
 write.csv(
   conditional_back_pos_summary,
-  file.path(project_path, "data", "conditional_back_pos_summary.csv"),
+  here("data", "conditional_back_pos_summary.csv"),
   row.names = FALSE
 )

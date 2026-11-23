@@ -1,0 +1,38 @@
+
+Family: binomial 
+Link function: logit 
+
+Formula:
+onset ~ cell + cell:mode_back_pos + cell:modeback_diff + s(place, 
+    by = cell, k = k_default) + s(docId, by = kind, bs = "re")
+
+Parametric coefficients:
+                                   Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                        -3.29462    0.27734 -11.880  < 2e-16 ***
+cellturn_terminal                   0.57186    0.34148   1.675   0.0940 .  
+cellbc_nonterminal                 -0.54865    0.40017  -1.371   0.1704    
+cellturn_nonterminal               -0.89680    0.47274  -1.897   0.0578 .  
+cellbc_terminal:mode_back_pos      -0.31173    0.07060  -4.415 1.01e-05 ***
+cellturn_terminal:mode_back_pos    -0.38512    0.03424 -11.247  < 2e-16 ***
+cellbc_nonterminal:mode_back_pos   -0.28097    0.06358  -4.419 9.92e-06 ***
+cellturn_nonterminal:mode_back_pos -0.33906    0.03620  -9.366  < 2e-16 ***
+cellbc_terminal:modeback_diff      -0.18782    0.06019  -3.121   0.0018 ** 
+cellturn_terminal:modeback_diff    -0.23032    0.03004  -7.668 1.75e-14 ***
+cellbc_nonterminal:modeback_diff   -0.10483    0.05106  -2.053   0.0401 *  
+cellturn_nonterminal:modeback_diff -0.17717    0.02960  -5.985 2.17e-09 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Approximate significance of smooth terms:
+                                 edf Ref.df Chi.sq  p-value    
+s(place):cellbc_terminal       3.413  3.905  36.77 5.87e-07 ***
+s(place):cellturn_terminal     3.664  4.112 140.00  < 2e-16 ***
+s(place):cellbc_nonterminal    2.859  3.380  29.01 5.45e-06 ***
+s(place):cellturn_nonterminal  2.577  2.997 148.71  < 2e-16 ***
+s(docId):kindbc               36.278 55.000 207.36  < 2e-16 ***
+s(docId):kindturn             51.743 59.000 689.40  < 2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+R-sq.(adj) =  0.0206   Deviance explained = 7.44%
+fREML = 1.2074e+05  Scale est. = 1         n = 116810

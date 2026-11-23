@@ -3,13 +3,13 @@
 
 library(tidyverse)
 
-project_path <- "/Users/lu/Desktop/Projects/RStan_prosodic"
-parameters <- read.csv(file.path(project_path, "data", "posterior_param_simple.csv"))
-load(file.path(project_path, "data", "sbc.Rdata"))
+library(here)
+parameters <- read.csv(here("data", "posterior_param_simple.csv"))
+load(here("data", "sbc.Rdata"))
 max_length <- 19  # Same as the original staircase: unitWordLen < 20.
 
 # Same POS labels as the POS Mapper plots.
-pos_files <- list.files(file.path(project_path, "data", "new_spacy_parses"),
+pos_files <- list.files(here("data", "new_spacy_parses"),
                         pattern = "\\.csv$", full.names = TRUE)
 spacy_pos <- map_dfr(pos_files, function(file) {
   read_csv(file, col_types = cols_only(
@@ -100,7 +100,7 @@ plot_staircase <- function(data, title, colour_max) {
 
 pos_plots <- list()
 
-output_dir <- file.path(project_path, "vis", "POS_staircase")
+output_dir <- here("vis", "POS_staircase")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 for (pos in pos_categories) {
@@ -129,7 +129,7 @@ for (pos in pos_categories) {
 pmf_names <- c("get_truncated_pmf", "get_truncated_pmf_rev",
                "get_truncated_pmf_gen", "compute_joint_pdf")
 inv.logit <- plogis
-for (code in parse(file.path(project_path, "src", "mapper_pre.R"))) {
+for (code in parse(here("src", "mapper_pre.R"))) {
   if (is.call(code) && identical(code[[1]], as.name("<-")) &&
       is.symbol(code[[2]]) && as.character(code[[2]]) %in% pmf_names) {
     eval(code)
@@ -160,7 +160,7 @@ pos_back_data <- bind_rows(back_by_word) %>%
   group_by(POS, place, back) %>%
   summarise(probability = mean(probability), .groups = "drop")
 
-back_output_dir <- file.path(project_path, "vis", "POS_back_given_place")
+back_output_dir <- here("vis", "POS_back_given_place")
 dir.create(back_output_dir, recursive = TRUE, showWarnings = FALSE)
 back_plots <- list()
 

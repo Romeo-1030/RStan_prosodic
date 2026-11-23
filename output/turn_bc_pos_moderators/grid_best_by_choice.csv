@@ -1,0 +1,10 @@
+expectation,remainder,exp_by,rem_by,form,place_int,dAIC
+pos_word,back,kind,cell,smooth,expected,0
+pos,back,iu,cell,smooth,expected,26.362956828874303
+pos_word,err,kind,kind,smooth,both,28.101526699687383
+pos,err,kind,kind,smooth,both,47.055690764995234
+word,back,common,cell,smooth,expected,94.71017602551365
+word,err,common,kind,smooth,both,132.1089752758271
+pos_word,none,kind,NA,smooth,expected,698.0514602214389
+word,none,common,NA,smooth,expected,785.2907480916365
+pos,none,iu,NA,smooth,expected,821.2525490749431
